@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
+import { router } from "expo-router";
 import {
   Screen,
   TextStyles,
@@ -240,9 +240,7 @@ export default function PantryScreen() {
           <TouchableOpacity
             style={[ButtonStyles.primary, { flexShrink: 0 }]}
             activeOpacity={0.8}
-            onPress={() => {
-              // later: open "Add item" modal
-            }}
+            onPress={() => router.push("/add-item")}
           >
             <View style={Layout.rowCenter}>
               <Ionicons
