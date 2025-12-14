@@ -1,5 +1,15 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Pressable,
+  TextInput,
+} from "react-native";
+import { Swipeable } from "react-native-gesture-handler";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import {
@@ -68,7 +78,7 @@ const MOCK_PANTRY: Record<CategoryKey, PantryItem[]> = {
     },
   ],
   condiments: [
-    { id: "11", name: "Mayo", quantity: "1 jar", expiresInDays: 30 },
+    { id: "11", name: "Mayo", quantity: "1 jar", expiresInDays: -2 },
     { id: "12", name: "Soy Sauce", quantity: "1 bottle", expiresInDays: 180 },
   ],
   spices: [
@@ -92,7 +102,6 @@ const MOCK_PANTRY: Record<CategoryKey, PantryItem[]> = {
     },
   ],
   pet: [],
-
   household: [
     {
       id: "19",
@@ -102,7 +111,6 @@ const MOCK_PANTRY: Record<CategoryKey, PantryItem[]> = {
     },
     { id: "20", name: "Dish Soap", quantity: "1 bottle", expiresInDays: 9999 },
   ],
-
   supplements: [
     { id: "21", name: "Creatine", quantity: "1 tub", expiresInDays: 9999 },
   ],
@@ -127,69 +135,113 @@ const CATEGORIES: Category[] = [
     icon: "medkit-outline",
   },
 ];
+
 const ALL_CATEGORY_KEYS: CategoryKey[] = CATEGORIES.map((c) => c.key);
+
 function setAllCategories(open: boolean): Record<CategoryKey, boolean> {
   return ALL_CATEGORY_KEYS.reduce((acc, key) => {
     acc[key] = open;
     return acc;
   }, {} as Record<CategoryKey, boolean>);
 }
+
 function getExpiryBadge(item: PantryItem) {
   const d = item.expiresInDays;
 
   if (d <= 0) {
+    const daysAgo = Math.abs(d);
+
+    let label = "Expired";
+    if (d === 0) label = "Expired today";
+    else if (d === -1) label = "Expired yesterday";
+    else label = `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago`;
+
     return {
-      container: TagStyles.danger,
-      text: TagStyles.textLight,
-      label: "Expired",
+      container: [
+        TagStyles.danger,
+        { backgroundColor: "rgba(255, 59, 48, 0.15)" },
+      ],
+      text: [TagStyles.textDark, { color: "rgb(170, 20, 20)" }],
+      label,
     };
   }
 
-  // "never expires" look (for household/supplements etc.)
   if (d >= 9999) {
     return {
-      container: TagStyles.base,
-      text: TagStyles.textDark,
+      container: [
+        TagStyles.base,
+        { backgroundColor: "rgba(120, 120, 120, 0.12)" },
+      ],
+      text: [TagStyles.textDark, { color: "rgba(60,60,60,0.9)" }],
       label: "No expiry",
     };
   }
 
   if (d <= 2) {
     return {
-      container: TagStyles.danger,
-      text: TagStyles.textLight,
+      container: [
+        TagStyles.base,
+        { backgroundColor: "rgba(255, 149, 0, 0.18)" },
+      ],
+      text: [TagStyles.textDark, { color: "rgba(140, 70, 0, 0.95)" }],
       label: `${d} day${d === 1 ? "" : "s"} left`,
     };
   }
 
   if (d <= 5) {
     return {
-      container: TagStyles.base,
-      text: TagStyles.textDark,
+      container: [
+        TagStyles.base,
+        { backgroundColor: "rgba(255, 204, 0, 0.18)" },
+      ],
+      text: [TagStyles.textDark, { color: "rgba(120, 95, 0, 0.95)" }],
       label: `${d} days left`,
     };
   }
 
   return {
-    container: TagStyles.success,
-    text: TagStyles.textLight,
+    container: [
+      TagStyles.success,
+      { backgroundColor: "rgba(52, 199, 89, 0.16)" },
+    ],
+    text: [TagStyles.textDark, { color: "rgba(0, 110, 40, 0.95)" }],
     label: `${d} days`,
   };
 }
 
+type ExpiringRow = PantryItem & {
+  categoryKey: CategoryKey;
+  categoryLabel: string;
+};
+
+function matchesQuery(item: PantryItem, q: string) {
+  if (!q) return true;
+  const hay = `${item.name} ${item.quantity}`.toLowerCase();
+  return hay.includes(q);
+}
+
 export default function PantryScreen() {
+  const [pantry, setPantry] =
+    useState<Record<CategoryKey, PantryItem[]>>(MOCK_PANTRY);
+
+  const [undo, setUndo] = useState<{
+    item: PantryItem;
+    categoryKey: CategoryKey;
+    index: number;
+  } | null>(null);
+
+  const [openExpiring, setOpenExpiring] = useState(true);
+  const [openExpired, setOpenExpired] = useState(true);
+
   const [openCategories, setOpenCategories] = useState<
     Record<CategoryKey, boolean>
   >({
-    // core: open
     produce: true,
     meatSeafood: true,
     dairyEggs: false,
     bakery: false,
     pantry: false,
     frozen: false,
-
-    // others: closed by default
     condiments: false,
     spices: false,
     beverages: false,
@@ -198,22 +250,216 @@ export default function PantryScreen() {
     household: false,
     supplements: false,
   });
+
+  // ✅ Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const q = searchQuery.trim().toLowerCase();
+  const isSearching = q.length > 0;
+
   const allOpen = ALL_CATEGORY_KEYS.every((k) => openCategories[k]);
 
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 4000);
+    return () => clearTimeout(t);
+  }, [undo]);
+
+  const confirmDelete = (categoryKey: CategoryKey, item: PantryItem) => {
+    Alert.alert("Delete item?", item.name, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          deleteItem(categoryKey, item.id);
+        },
+      },
+    ]);
+  };
+
   const toggleAll = () => {
-    setOpenCategories(setAllCategories(!allOpen));
+    const nextOpen = !allOpen;
+    setOpenCategories(setAllCategories(nextOpen));
+    setOpenExpiring(nextOpen);
+    setOpenExpired(nextOpen);
   };
+
   const toggleCategory = (key: CategoryKey) => {
-    setOpenCategories((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+    setOpenCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const deleteItem = (categoryKey: CategoryKey, itemId: string) => {
+    setPantry((prev) => {
+      const list = prev[categoryKey];
+      const index = list.findIndex((x) => x.id === itemId);
+      if (index === -1) return prev;
+
+      const item = list[index];
+      setUndo({ item, categoryKey, index });
+
+      const nextList = list.filter((x) => x.id !== itemId);
+      return { ...prev, [categoryKey]: nextList };
+    });
+  };
+
+  const undoDelete = () => {
+    if (!undo) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    setPantry((prev) => {
+      const list = prev[undo.categoryKey];
+      const nextList = list.slice();
+      nextList.splice(undo.index, 0, undo.item);
+      return { ...prev, [undo.categoryKey]: nextList };
+    });
+    setUndo(null);
+  };
+
+  const showCategoryMenu = (cat: Category) => {
+    Alert.alert(cat.label, "Category options", [
+      {
+        text: "Clear expired items",
+        onPress: () => {
+          setPantry((prev) => ({
+            ...prev,
+            [cat.key]: prev[cat.key].filter((it) => it.expiresInDays > 0),
+          }));
+        },
+      },
+      {
+        text: "Clear category (remove all items)",
+        style: "destructive",
+        onPress: () => {
+          setPantry((prev) => ({ ...prev, [cat.key]: [] }));
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  // ✅ Expired filtered by search
+  const expiredItems: ExpiringRow[] = useMemo(() => {
+    const byKey = new Map<CategoryKey, string>();
+    CATEGORIES.forEach((c) => byKey.set(c.key, c.label));
+
+    const flat: ExpiringRow[] = [];
+    for (const key of ALL_CATEGORY_KEYS) {
+      for (const item of pantry[key]) {
+        if (item.expiresInDays <= 0 && matchesQuery(item, q)) {
+          flat.push({
+            ...item,
+            categoryKey: key,
+            categoryLabel: byKey.get(key) ?? key,
+          });
+        }
+      }
+    }
+    flat.sort((a, b) => b.expiresInDays - a.expiresInDays);
+    return flat;
+  }, [pantry, q]);
+
+  // ✅ Expiring soon filtered by search
+  const expiringSoon: ExpiringRow[] = useMemo(() => {
+    const byKey = new Map<CategoryKey, string>();
+    CATEGORIES.forEach((c) => byKey.set(c.key, c.label));
+
+    const flat: ExpiringRow[] = [];
+    for (const key of ALL_CATEGORY_KEYS) {
+      for (const item of pantry[key]) {
+        if (item.expiresInDays >= 9999) continue;
+        if (item.expiresInDays <= 0) continue;
+        if (item.expiresInDays > 7) continue;
+        if (!matchesQuery(item, q)) continue;
+
+        flat.push({
+          ...item,
+          categoryKey: key,
+          categoryLabel: byKey.get(key) ?? key,
+        });
+      }
+    }
+
+    flat.sort((a, b) => a.expiresInDays - b.expiresInDays);
+    return flat;
+  }, [pantry, q]);
+
+  // ✅ Categories filtered by search + auto expand when searching
+  const visibleCategories = useMemo(() => {
+    return CATEGORIES.map((cat) => {
+      const items = pantry[cat.key].filter((it) => matchesQuery(it, q));
+      return { cat, items };
+    }).filter(({ items }) => {
+      // when not searching, show all categories (even empty)
+      if (!isSearching) return true;
+      // when searching, show only categories with matches
+      return items.length > 0;
+    });
+  }, [pantry, q, isSearching]);
+
+  const InlineDeleteButton = ({ onDelete }: { onDelete: () => void }) => (
+    <Pressable
+      onPress={onDelete}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        marginLeft: Spacing.sm,
+        padding: 6,
+        borderRadius: 10,
+        backgroundColor: pressed
+          ? "rgba(255, 59, 48, 0.18)"
+          : "rgba(255, 59, 48, 0.10)",
+        justifyContent: "center",
+        alignItems: "center",
+      })}
+    >
+      <Ionicons name="trash-outline" size={16} color={"rgb(170, 20, 20)"} />
+    </Pressable>
+  );
+
+  const renderRightActions = (onDelete: () => void) => (
+    <View
+      style={{
+        width: 86,
+        justifyContent: "center",
+        alignItems: "center",
+        marginLeft: Spacing.sm,
+      }}
+    >
+      <Pressable
+        onPress={onDelete}
+        hitSlop={8}
+        style={({ pressed }) => [
+          {
+            width: 66,
+            height: 44,
+            borderRadius: 14,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "rgba(255, 59, 48, 0.12)",
+            borderWidth: 1,
+            borderColor: "rgba(170, 20, 20, 0.20)",
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}
+      >
+        <Ionicons name="trash-outline" size={20} color={"rgb(170, 20, 20)"} />
+        <Text
+          style={[
+            TextStyles.small,
+            { color: "rgb(170, 20, 20)", marginTop: 2 },
+          ]}
+        >
+          Delete
+        </Text>
+      </Pressable>
+    </View>
+  );
 
   return (
     <View style={Screen.full}>
       <ScrollView
         style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: Spacing.lg,
           paddingTop: Spacing.lg,
@@ -224,10 +470,7 @@ export default function PantryScreen() {
         <View
           style={[
             Layout.rowBetween,
-            {
-              marginBottom: Spacing.lg,
-              columnGap: Spacing.md,
-            },
+            { marginBottom: Spacing.lg, columnGap: Spacing.md },
           ]}
         >
           <View style={{ flex: 1, paddingRight: Spacing.sm }}>
@@ -253,6 +496,57 @@ export default function PantryScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {/* ✅ Search bar */}
+        <View style={{ marginBottom: Spacing.md }}>
+          <View style={{ position: "relative" }}>
+            <Ionicons
+              name="search-outline"
+              size={18}
+              color={Colors.textLight}
+              style={{ position: "absolute", left: 12, top: 12, zIndex: 1 }}
+            />
+            <TextInput
+              placeholder="Search pantry…"
+              placeholderTextColor={Colors.textLight}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCorrect={false}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+              style={{
+                backgroundColor: "rgba(120,120,120,0.10)",
+                borderColor: "rgba(120,120,120,0.18)",
+                borderWidth: 1,
+                borderRadius: 14,
+                paddingLeft: 38,
+                paddingRight: 12,
+                paddingVertical: 10,
+                fontSize: 16,
+                color: Colors.text,
+              }}
+            />
+          </View>
+
+          {isSearching && (
+            <View style={[Layout.rowBetween, { marginTop: 8 }]}>
+              <Text style={TextStyles.small}>
+                Showing results for “{searchQuery.trim()}”
+              </Text>
+
+              <Pressable
+                onPress={() => setSearchQuery("")}
+                hitSlop={10}
+                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+              >
+                <Text style={[TextStyles.small, { fontWeight: "700" }]}>
+                  Clear
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+
         {/* Expand/Collapse all */}
         <View style={[Layout.rowEnd, { marginBottom: Spacing.md }]}>
           <TouchableOpacity
@@ -274,14 +568,209 @@ export default function PantryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Category sections */}
-        {CATEGORIES.map((cat) => {
-          const items = MOCK_PANTRY[cat.key];
-          const isOpen = openCategories[cat.key];
+        {/* Expired */}
+        {expiredItems.length > 0 && (
+          <View style={{ marginBottom: Spacing.md }}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setOpenExpired((v) => !v)}
+              style={[
+                CardStyles.subtle,
+                Layout.rowBetween,
+                {
+                  paddingVertical: Spacing.sm,
+                  backgroundColor: "rgba(120, 120, 120, 0.12)",
+                  borderColor: "rgba(120, 120, 120, 0.22)",
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <View style={Layout.row}>
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={"rgba(60,60,60,0.85)"}
+                  style={{ marginRight: Spacing.sm }}
+                />
+                <View>
+                  <Text
+                    style={[
+                      TextStyles.sectionTitle,
+                      { color: "rgba(60,60,60,0.9)" },
+                    ]}
+                  >
+                    Expired
+                  </Text>
+                  <Text style={TextStyles.small}>
+                    {expiredItems.length} item
+                    {expiredItems.length === 1 ? "" : "s"}
+                  </Text>
+                </View>
+              </View>
+
+              <Ionicons
+                name={
+                  openExpired ? "chevron-up-outline" : "chevron-down-outline"
+                }
+                size={20}
+                color={Colors.textLight}
+              />
+            </TouchableOpacity>
+
+            {openExpired && (
+              <View style={{ marginTop: Spacing.sm }}>
+                {expiredItems.map((item) => {
+                  const badge = getExpiryBadge(item);
+                  return (
+                    <Swipeable
+                      key={`${item.categoryKey}:${item.id}`}
+                      renderRightActions={() =>
+                        renderRightActions(() => {
+                          Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Medium
+                          );
+                          deleteItem(item.categoryKey, item.id);
+                        })
+                      }
+                      overshootRight={false}
+                      rightThreshold={40}
+                    >
+                      <View style={[CardStyles.pantryItem, { opacity: 0.78 }]}>
+                        <View style={Layout.rowBetween}>
+                          <View style={{ flex: 1, paddingRight: Spacing.md }}>
+                            <Text style={TextStyles.body}>{item.name}</Text>
+                            <Text style={TextStyles.small}>
+                              {item.quantity} • {item.categoryLabel}
+                            </Text>
+                          </View>
+
+                          <View style={Layout.row}>
+                            <View style={badge.container as any}>
+                              <Text style={badge.text as any}>
+                                {badge.label}
+                              </Text>
+                            </View>
+                            <InlineDeleteButton
+                              onDelete={() =>
+                                confirmDelete(item.categoryKey, item)
+                              }
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    </Swipeable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Expiring soon */}
+        {expiringSoon.length > 0 && (
+          <View style={{ marginBottom: Spacing.md }}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setOpenExpiring((v) => !v)}
+              style={[
+                CardStyles.subtle,
+                Layout.rowBetween,
+                {
+                  paddingVertical: Spacing.sm,
+                  backgroundColor: "rgba(255, 149, 0, 0.14)",
+                  borderColor: "rgba(140, 70, 0, 0.18)",
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <View style={Layout.row}>
+                <Ionicons
+                  name="alarm-outline"
+                  size={20}
+                  color={"rgba(140, 70, 0, 0.95)"}
+                  style={{ marginRight: Spacing.sm }}
+                />
+                <View>
+                  <Text
+                    style={[
+                      TextStyles.sectionTitle,
+                      { color: "rgba(140, 70, 0, 0.95)" },
+                    ]}
+                  >
+                    Expiring soon
+                  </Text>
+                  <Text style={TextStyles.small}>
+                    {expiringSoon.length} item
+                    {expiringSoon.length === 1 ? "" : "s"}
+                  </Text>
+                </View>
+              </View>
+
+              <Ionicons
+                name={
+                  openExpiring ? "chevron-up-outline" : "chevron-down-outline"
+                }
+                size={20}
+                color={Colors.textLight}
+              />
+            </TouchableOpacity>
+
+            {openExpiring && (
+              <View style={{ marginTop: Spacing.sm }}>
+                {expiringSoon.map((item) => {
+                  const badge = getExpiryBadge(item);
+                  return (
+                    <Swipeable
+                      key={`${item.categoryKey}:${item.id}`}
+                      renderRightActions={() =>
+                        renderRightActions(() => {
+                          Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Medium
+                          );
+                          deleteItem(item.categoryKey, item.id);
+                        })
+                      }
+                      overshootRight={false}
+                      rightThreshold={40}
+                    >
+                      <View style={CardStyles.pantryItem}>
+                        <View style={Layout.rowBetween}>
+                          <View style={{ flex: 1, paddingRight: Spacing.md }}>
+                            <Text style={TextStyles.body}>{item.name}</Text>
+                            <Text style={TextStyles.small}>
+                              {item.quantity} • {item.categoryLabel}
+                            </Text>
+                          </View>
+
+                          <View style={Layout.row}>
+                            <View style={badge.container as any}>
+                              <Text style={badge.text as any}>
+                                {badge.label}
+                              </Text>
+                            </View>
+                            <InlineDeleteButton
+                              onDelete={() =>
+                                confirmDelete(item.categoryKey, item)
+                              }
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    </Swipeable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Categories */}
+        {visibleCategories.map(({ cat, items }) => {
+          // ✅ force open while searching (power user)
+          const isOpen = isSearching ? true : openCategories[cat.key];
 
           return (
             <View key={cat.key} style={{ marginBottom: Spacing.md }}>
-              {/* Category header */}
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => toggleCategory(cat.key)}
@@ -302,44 +791,96 @@ export default function PantryScreen() {
                     <Text style={TextStyles.sectionTitle}>{cat.label}</Text>
                     <Text style={TextStyles.small}>
                       {items.length} item{items.length === 1 ? "" : "s"}
+                      {isSearching && pantry[cat.key].length !== items.length
+                        ? ` (of ${pantry[cat.key].length})`
+                        : ""}
                     </Text>
                   </View>
                 </View>
 
-                <Ionicons
-                  name={isOpen ? "chevron-up-outline" : "chevron-down-outline"}
-                  size={20}
-                  color={Colors.textLight}
-                />
+                <View style={Layout.row}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={(e) => {
+                      // @ts-ignore
+                      e?.stopPropagation?.();
+                      showCategoryMenu(cat);
+                    }}
+                    style={{
+                      paddingHorizontal: Spacing.sm,
+                      paddingVertical: 6,
+                    }}
+                  >
+                    <Ionicons
+                      name="ellipsis-vertical"
+                      size={18}
+                      color={Colors.textLight}
+                    />
+                  </TouchableOpacity>
+
+                  <Ionicons
+                    name={
+                      isOpen ? "chevron-up-outline" : "chevron-down-outline"
+                    }
+                    size={20}
+                    color={Colors.textLight}
+                  />
+                </View>
               </TouchableOpacity>
 
-              {/* Items list (collapsible) */}
               {isOpen && items.length > 0 && (
                 <View style={{ marginTop: Spacing.sm }}>
-                  {items.map((item) => {
-                    const badge = getExpiryBadge(item);
+                  {items
+                    .slice()
+                    .sort((a, b) => a.expiresInDays - b.expiresInDays)
+                    .map((item) => {
+                      const badge = getExpiryBadge(item);
 
-                    return (
-                      <View key={item.id} style={CardStyles.pantryItem}>
-                        <View style={Layout.rowBetween}>
-                          <View>
-                            <Text style={TextStyles.body}>{item.name}</Text>
-                            <Text style={TextStyles.small}>
-                              {item.quantity}
-                            </Text>
-                          </View>
+                      return (
+                        <Swipeable
+                          key={item.id}
+                          renderRightActions={() =>
+                            renderRightActions(() => {
+                              Haptics.impactAsync(
+                                Haptics.ImpactFeedbackStyle.Medium
+                              );
+                              deleteItem(cat.key, item.id);
+                            })
+                          }
+                          overshootRight={false}
+                          rightThreshold={40}
+                        >
+                          <View style={CardStyles.pantryItem}>
+                            <View style={Layout.rowBetween}>
+                              <View
+                                style={{ flex: 1, paddingRight: Spacing.md }}
+                              >
+                                <Text style={TextStyles.body}>{item.name}</Text>
+                                <Text style={TextStyles.small}>
+                                  {item.quantity}
+                                </Text>
+                              </View>
 
-                          <View style={badge.container}>
-                            <Text style={badge.text}>{badge.label}</Text>
+                              <View style={Layout.row}>
+                                <View style={badge.container as any}>
+                                  <Text style={badge.text as any}>
+                                    {badge.label}
+                                  </Text>
+                                </View>
+
+                                <InlineDeleteButton
+                                  onDelete={() => confirmDelete(cat.key, item)}
+                                />
+                              </View>
+                            </View>
                           </View>
-                        </View>
-                      </View>
-                    );
-                  })}
+                        </Swipeable>
+                      );
+                    })}
                 </View>
               )}
 
-              {isOpen && items.length === 0 && (
+              {isOpen && items.length === 0 && !isSearching && (
                 <View style={[CardStyles.subtle, { marginTop: Spacing.sm }]}>
                   <Text style={TextStyles.small}>
                     No items in this category yet.
@@ -349,7 +890,52 @@ export default function PantryScreen() {
             </View>
           );
         })}
+
+        {/* empty search state */}
+        {isSearching &&
+          expiredItems.length === 0 &&
+          expiringSoon.length === 0 &&
+          visibleCategories.length === 0 && (
+            <View style={[CardStyles.subtle, { marginTop: Spacing.sm }]}>
+              <Text style={TextStyles.small}>No items match your search.</Text>
+            </View>
+          )}
       </ScrollView>
+
+      {undo && (
+        <View
+          style={{
+            position: "absolute",
+            left: Spacing.lg,
+            right: Spacing.lg,
+            bottom: Spacing.lg,
+            padding: Spacing.md,
+            borderRadius: 16,
+            backgroundColor: "rgba(20,20,20,0.92)",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={[TextStyles.small, { color: "#fff", flex: 1 }]}>
+            Deleted {undo.item.name}
+          </Text>
+
+          <Pressable
+            onPress={undoDelete}
+            style={{ paddingHorizontal: Spacing.md, paddingVertical: 8 }}
+          >
+            <Text
+              style={[
+                TextStyles.small,
+                { color: "rgba(255,255,255,0.95)", fontWeight: "700" },
+              ]}
+            >
+              UNDO
+            </Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
