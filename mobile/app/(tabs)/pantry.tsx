@@ -8,7 +8,6 @@ import {
   Pressable,
   TextInput,
 } from "react-native";
-import { Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -17,208 +16,25 @@ import {
   TextStyles,
   CardStyles,
   Layout,
-  TagStyles,
   ButtonStyles,
 } from "@/constants/styles";
+import { MOCK_PANTRY } from "@/features/pantry/mock";
+import {
+  CATEGORIES,
+  ALL_CATEGORY_KEYS,
+  setAllCategories,
+} from "@/features/pantry/constants";
+import { PantryRow } from "@/features/pantry/components/PantryRow";
+import type { PantryItem, CategoryKey } from "@/features/pantry/types";
+import { matchesQuery } from "@/features/pantry/utils";
+
 import { Colors, Spacing } from "@/constants/theme";
-
-type PantryItem = {
-  id: string;
-  name: string;
-  quantity: string;
-  expiresInDays: number;
-};
-
-type CategoryKey =
-  | "produce"
-  | "meatSeafood"
-  | "dairyEggs"
-  | "bakery"
-  | "pantry"
-  | "condiments"
-  | "spices"
-  | "beverages"
-  | "frozen"
-  | "snacks"
-  | "pet"
-  | "household"
-  | "supplements";
-
-type Category = {
-  key: CategoryKey;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-};
-
-// Fake data for now
-const MOCK_PANTRY: Record<CategoryKey, PantryItem[]> = {
-  produce: [
-    { id: "1", name: "Apples", quantity: "6", expiresInDays: 7 },
-    { id: "2", name: "Spinach", quantity: "1 bag", expiresInDays: 2 },
-  ],
-  meatSeafood: [
-    { id: "3", name: "Chicken Breast", quantity: "2 lbs", expiresInDays: 3 },
-    { id: "4", name: "Ground Beef", quantity: "1 lb", expiresInDays: 1 },
-  ],
-  dairyEggs: [
-    { id: "5", name: "Milk", quantity: "1 gal", expiresInDays: 4 },
-    { id: "6", name: "Cheddar Cheese", quantity: "0.5 lb", expiresInDays: 14 },
-    { id: "6b", name: "Eggs", quantity: "12 count", expiresInDays: 10 },
-  ],
-  bakery: [
-    { id: "10", name: "Sourdough Bread", quantity: "1 loaf", expiresInDays: 3 },
-  ],
-  pantry: [
-    { id: "7", name: "Rice", quantity: "5 lbs", expiresInDays: 120 },
-    {
-      id: "8",
-      name: "Black Beans (canned)",
-      quantity: "4 cans",
-      expiresInDays: 365,
-    },
-  ],
-  condiments: [
-    { id: "11", name: "Mayo", quantity: "1 jar", expiresInDays: -2 },
-    { id: "12", name: "Soy Sauce", quantity: "1 bottle", expiresInDays: 180 },
-  ],
-  spices: [
-    { id: "13", name: "Garlic Powder", quantity: "1 jar", expiresInDays: 365 },
-    { id: "14", name: "Cinnamon", quantity: "1 jar", expiresInDays: 365 },
-  ],
-  beverages: [
-    { id: "15", name: "Orange Juice", quantity: "1 bottle", expiresInDays: 6 },
-    { id: "16", name: "Coffee", quantity: "1 bag", expiresInDays: 90 },
-  ],
-  frozen: [
-    { id: "9", name: "Frozen Berries", quantity: "1 bag", expiresInDays: 60 },
-  ],
-  snacks: [
-    { id: "17", name: "Tortilla Chips", quantity: "1 bag", expiresInDays: 21 },
-    {
-      id: "18",
-      name: "Dark Chocolate",
-      quantity: "2 bars",
-      expiresInDays: 180,
-    },
-  ],
-  pet: [],
-  household: [
-    {
-      id: "19",
-      name: "Paper Towels",
-      quantity: "6 rolls",
-      expiresInDays: 9999,
-    },
-    { id: "20", name: "Dish Soap", quantity: "1 bottle", expiresInDays: 9999 },
-  ],
-  supplements: [
-    { id: "21", name: "Creatine", quantity: "1 tub", expiresInDays: 9999 },
-  ],
-};
-
-const CATEGORIES: Category[] = [
-  { key: "produce", label: "Produce", icon: "leaf-outline" },
-  { key: "meatSeafood", label: "Meat & Seafood", icon: "restaurant-outline" },
-  { key: "dairyEggs", label: "Dairy & Eggs", icon: "ice-cream-outline" },
-  { key: "bakery", label: "Bakery / Bread", icon: "nutrition-outline" },
-  { key: "pantry", label: "Pantry (Dry Goods)", icon: "cube-outline" },
-  { key: "condiments", label: "Condiments & Sauces", icon: "water-outline" },
-  { key: "spices", label: "Spices & Seasonings", icon: "flame-outline" },
-  { key: "beverages", label: "Beverages", icon: "cafe-outline" },
-  { key: "frozen", label: "Frozen", icon: "snow-outline" },
-  { key: "snacks", label: "Snacks & Sweets", icon: "ice-cream-outline" },
-  { key: "pet", label: "Pet Food", icon: "paw-outline" },
-  { key: "household", label: "Household (Non-food)", icon: "home-outline" },
-  {
-    key: "supplements",
-    label: "Supplements / Vitamins",
-    icon: "medkit-outline",
-  },
-];
-
-const ALL_CATEGORY_KEYS: CategoryKey[] = CATEGORIES.map((c) => c.key);
-
-function setAllCategories(open: boolean): Record<CategoryKey, boolean> {
-  return ALL_CATEGORY_KEYS.reduce((acc, key) => {
-    acc[key] = open;
-    return acc;
-  }, {} as Record<CategoryKey, boolean>);
-}
-
-function getExpiryBadge(item: PantryItem) {
-  const d = item.expiresInDays;
-
-  if (d <= 0) {
-    const daysAgo = Math.abs(d);
-
-    let label = "Expired";
-    if (d === 0) label = "Expired today";
-    else if (d === -1) label = "Expired yesterday";
-    else label = `Expired ${daysAgo} day${daysAgo === 1 ? "" : "s"} ago`;
-
-    return {
-      container: [
-        TagStyles.danger,
-        { backgroundColor: "rgba(255, 59, 48, 0.15)" },
-      ],
-      text: [TagStyles.textDark, { color: "rgb(170, 20, 20)" }],
-      label,
-    };
-  }
-
-  if (d >= 9999) {
-    return {
-      container: [
-        TagStyles.base,
-        { backgroundColor: "rgba(120, 120, 120, 0.12)" },
-      ],
-      text: [TagStyles.textDark, { color: "rgba(60,60,60,0.9)" }],
-      label: "No expiry",
-    };
-  }
-
-  if (d <= 2) {
-    return {
-      container: [
-        TagStyles.base,
-        { backgroundColor: "rgba(255, 149, 0, 0.18)" },
-      ],
-      text: [TagStyles.textDark, { color: "rgba(140, 70, 0, 0.95)" }],
-      label: `${d} day${d === 1 ? "" : "s"} left`,
-    };
-  }
-
-  if (d <= 5) {
-    return {
-      container: [
-        TagStyles.base,
-        { backgroundColor: "rgba(255, 204, 0, 0.18)" },
-      ],
-      text: [TagStyles.textDark, { color: "rgba(120, 95, 0, 0.95)" }],
-      label: `${d} days left`,
-    };
-  }
-
-  return {
-    container: [
-      TagStyles.success,
-      { backgroundColor: "rgba(52, 199, 89, 0.16)" },
-    ],
-    text: [TagStyles.textDark, { color: "rgba(0, 110, 40, 0.95)" }],
-    label: `${d} days`,
-  };
-}
 
 type ExpiringRow = PantryItem & {
   categoryKey: CategoryKey;
   categoryLabel: string;
 };
-
-function matchesQuery(item: PantryItem, q: string) {
-  if (!q) return true;
-  const hay = `${item.name} ${item.quantity}`.toLowerCase();
-  return hay.includes(q);
-}
+type Category = (typeof CATEGORIES)[number];
 
 export default function PantryScreen() {
   const [pantry, setPantry] =
@@ -250,7 +66,16 @@ export default function PantryScreen() {
     household: false,
     supplements: false,
   });
+  const [bulkMode, setBulkMode] = useState(false);
 
+  // selected ids per category (so ids can collide across categories safely)
+  const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
+    () =>
+      ALL_CATEGORY_KEYS.reduce((acc, k) => {
+        acc[k] = new Set<string>();
+        return acc;
+      }, {} as Record<CategoryKey, Set<string>>)
+  );
   // ✅ Search
   const [searchQuery, setSearchQuery] = useState("");
   const q = searchQuery.trim().toLowerCase();
@@ -263,6 +88,59 @@ export default function PantryScreen() {
     const t = setTimeout(() => setUndo(null), 4000);
     return () => clearTimeout(t);
   }, [undo]);
+  const selectedCount = useMemo(() => {
+    let n = 0;
+    for (const k of ALL_CATEGORY_KEYS) n += selected[k].size;
+    return n;
+  }, [selected]);
+
+  const clearSelection = () => {
+    setSelected(
+      ALL_CATEGORY_KEYS.reduce((acc, k) => {
+        acc[k] = new Set<string>();
+        return acc;
+      }, {} as Record<CategoryKey, Set<string>>)
+    );
+  };
+
+  const toggleBulkMode = () => {
+    setBulkMode((v) => {
+      const next = !v;
+      if (!next) clearSelection();
+      return next;
+    });
+  };
+
+  const isSelected = (categoryKey: CategoryKey, id: string) =>
+    selected[categoryKey].has(id);
+
+  const toggleSelected = (categoryKey: CategoryKey, id: string) => {
+    setSelected((prev) => {
+      const next: Record<CategoryKey, Set<string>> = { ...prev };
+      const set = new Set(next[categoryKey]);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      next[categoryKey] = set;
+      return next;
+    });
+  };
+  const bulkDeleteSelected = () => {
+    setUndo(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    setPantry((prev) => {
+      const next: Record<CategoryKey, PantryItem[]> = { ...prev };
+
+      for (const k of ALL_CATEGORY_KEYS) {
+        if (selected[k].size === 0) continue;
+        next[k] = prev[k].filter((it) => !selected[k].has(it.id));
+      }
+      return next;
+    });
+
+    clearSelection();
+    setBulkMode(false);
+  };
 
   const confirmDelete = (categoryKey: CategoryKey, item: PantryItem) => {
     Alert.alert("Delete item?", item.name, [
@@ -318,15 +196,6 @@ export default function PantryScreen() {
 
   const showCategoryMenu = (cat: Category) => {
     Alert.alert(cat.label, "Category options", [
-      {
-        text: "Clear expired items",
-        onPress: () => {
-          setPantry((prev) => ({
-            ...prev,
-            [cat.key]: prev[cat.key].filter((it) => it.expiresInDays > 0),
-          }));
-        },
-      },
       {
         text: "Clear category (remove all items)",
         style: "destructive",
@@ -396,64 +265,6 @@ export default function PantryScreen() {
       return items.length > 0;
     });
   }, [pantry, q, isSearching]);
-
-  const InlineDeleteButton = ({ onDelete }: { onDelete: () => void }) => (
-    <Pressable
-      onPress={onDelete}
-      hitSlop={6}
-      style={({ pressed }) => ({
-        marginLeft: Spacing.sm,
-        padding: 6,
-        borderRadius: 10,
-        backgroundColor: pressed
-          ? "rgba(255, 59, 48, 0.18)"
-          : "rgba(255, 59, 48, 0.10)",
-        justifyContent: "center",
-        alignItems: "center",
-      })}
-    >
-      <Ionicons name="trash-outline" size={16} color={"rgb(170, 20, 20)"} />
-    </Pressable>
-  );
-
-  const renderRightActions = (onDelete: () => void) => (
-    <View
-      style={{
-        width: 86,
-        justifyContent: "center",
-        alignItems: "center",
-        marginLeft: Spacing.sm,
-      }}
-    >
-      <Pressable
-        onPress={onDelete}
-        hitSlop={8}
-        style={({ pressed }) => [
-          {
-            width: 66,
-            height: 44,
-            borderRadius: 14,
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: "rgba(255, 59, 48, 0.12)",
-            borderWidth: 1,
-            borderColor: "rgba(170, 20, 20, 0.20)",
-            opacity: pressed ? 0.7 : 1,
-          },
-        ]}
-      >
-        <Ionicons name="trash-outline" size={20} color={"rgb(170, 20, 20)"} />
-        <Text
-          style={[
-            TextStyles.small,
-            { color: "rgb(170, 20, 20)", marginTop: 2 },
-          ]}
-        >
-          Delete
-        </Text>
-      </Pressable>
-    </View>
-  );
 
   return (
     <View style={Screen.full}>
@@ -547,12 +358,35 @@ export default function PantryScreen() {
           )}
         </View>
 
-        {/* Expand/Collapse all */}
-        <View style={[Layout.rowEnd, { marginBottom: Spacing.md }]}>
+        <View style={[Layout.rowBetween, { marginBottom: Spacing.md }]}>
           <TouchableOpacity
-            style={[ButtonStyles.ghost, { paddingHorizontal: Spacing.md }]}
+            style={[
+              ButtonStyles.ghost,
+              { paddingHorizontal: Spacing.md, opacity: bulkMode ? 1 : 0.95 },
+            ]}
             activeOpacity={0.8}
-            onPress={toggleAll}
+            onPress={toggleBulkMode}
+          >
+            <View style={Layout.rowCenter}>
+              <Ionicons
+                name={bulkMode ? "checkbox" : "square-outline"}
+                size={16}
+                color={Colors.text}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={ButtonStyles.ghostText}>
+                {bulkMode ? `Bulk Edit (${selectedCount})` : "Bulk Edit"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              ButtonStyles.ghost,
+              { paddingHorizontal: Spacing.md, opacity: bulkMode ? 0.5 : 1 },
+            ]}
+            activeOpacity={0.8}
+            onPress={bulkMode ? undefined : toggleAll}
           >
             <View style={Layout.rowCenter}>
               <Ionicons
@@ -619,48 +453,22 @@ export default function PantryScreen() {
 
             {openExpired && (
               <View style={{ marginTop: Spacing.sm }}>
-                {expiredItems.map((item) => {
-                  const badge = getExpiryBadge(item);
-                  return (
-                    <Swipeable
-                      key={`${item.categoryKey}:${item.id}`}
-                      renderRightActions={() =>
-                        renderRightActions(() => {
-                          Haptics.impactAsync(
-                            Haptics.ImpactFeedbackStyle.Medium
-                          );
-                          deleteItem(item.categoryKey, item.id);
-                        })
-                      }
-                      overshootRight={false}
-                      rightThreshold={40}
-                    >
-                      <View style={[CardStyles.pantryItem, { opacity: 0.78 }]}>
-                        <View style={Layout.rowBetween}>
-                          <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                            <Text style={TextStyles.body}>{item.name}</Text>
-                            <Text style={TextStyles.small}>
-                              {item.quantity} • {item.categoryLabel}
-                            </Text>
-                          </View>
-
-                          <View style={Layout.row}>
-                            <View style={badge.container as any}>
-                              <Text style={badge.text as any}>
-                                {badge.label}
-                              </Text>
-                            </View>
-                            <InlineDeleteButton
-                              onDelete={() =>
-                                confirmDelete(item.categoryKey, item)
-                              }
-                            />
-                          </View>
-                        </View>
-                      </View>
-                    </Swipeable>
-                  );
-                })}
+                {expiredItems.map((item) => (
+                  <PantryRow
+                    key={`${item.categoryKey}:${item.id}`}
+                    item={item}
+                    bulkMode={bulkMode}
+                    isSearching={isSearching}
+                    checked={isSelected(item.categoryKey, item.id)}
+                    onToggle={() => {
+                      if (!bulkMode) return;
+                      Haptics.selectionAsync();
+                      toggleSelected(item.categoryKey, item.id);
+                    }}
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
+                    onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
+                  />
+                ))}
               </View>
             )}
           </View>
@@ -717,48 +525,22 @@ export default function PantryScreen() {
 
             {openExpiring && (
               <View style={{ marginTop: Spacing.sm }}>
-                {expiringSoon.map((item) => {
-                  const badge = getExpiryBadge(item);
-                  return (
-                    <Swipeable
-                      key={`${item.categoryKey}:${item.id}`}
-                      renderRightActions={() =>
-                        renderRightActions(() => {
-                          Haptics.impactAsync(
-                            Haptics.ImpactFeedbackStyle.Medium
-                          );
-                          deleteItem(item.categoryKey, item.id);
-                        })
-                      }
-                      overshootRight={false}
-                      rightThreshold={40}
-                    >
-                      <View style={CardStyles.pantryItem}>
-                        <View style={Layout.rowBetween}>
-                          <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                            <Text style={TextStyles.body}>{item.name}</Text>
-                            <Text style={TextStyles.small}>
-                              {item.quantity} • {item.categoryLabel}
-                            </Text>
-                          </View>
-
-                          <View style={Layout.row}>
-                            <View style={badge.container as any}>
-                              <Text style={badge.text as any}>
-                                {badge.label}
-                              </Text>
-                            </View>
-                            <InlineDeleteButton
-                              onDelete={() =>
-                                confirmDelete(item.categoryKey, item)
-                              }
-                            />
-                          </View>
-                        </View>
-                      </View>
-                    </Swipeable>
-                  );
-                })}
+                {expiringSoon.map((item) => (
+                  <PantryRow
+                    key={`${item.categoryKey}:${item.id}`}
+                    item={item}
+                    bulkMode={bulkMode}
+                    isSearching={isSearching}
+                    checked={isSelected(item.categoryKey, item.id)}
+                    onToggle={() => {
+                      if (!bulkMode) return;
+                      Haptics.selectionAsync();
+                      toggleSelected(item.categoryKey, item.id);
+                    }}
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
+                    onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
+                  />
+                ))}
               </View>
             )}
           </View>
@@ -773,11 +555,17 @@ export default function PantryScreen() {
             <View key={cat.key} style={{ marginBottom: Spacing.md }}>
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => toggleCategory(cat.key)}
+                onPress={() => {
+                  if (isSearching) return; // ✅ ignore taps during search
+                  toggleCategory(cat.key);
+                }}
                 style={[
                   CardStyles.subtle,
                   Layout.rowBetween,
-                  { paddingVertical: Spacing.sm },
+                  {
+                    paddingVertical: Spacing.sm,
+                    opacity: isSearching ? 0.95 : 1,
+                  },
                 ]}
               >
                 <View style={Layout.row}>
@@ -833,50 +621,22 @@ export default function PantryScreen() {
                   {items
                     .slice()
                     .sort((a, b) => a.expiresInDays - b.expiresInDays)
-                    .map((item) => {
-                      const badge = getExpiryBadge(item);
-
-                      return (
-                        <Swipeable
-                          key={item.id}
-                          renderRightActions={() =>
-                            renderRightActions(() => {
-                              Haptics.impactAsync(
-                                Haptics.ImpactFeedbackStyle.Medium
-                              );
-                              deleteItem(cat.key, item.id);
-                            })
-                          }
-                          overshootRight={false}
-                          rightThreshold={40}
-                        >
-                          <View style={CardStyles.pantryItem}>
-                            <View style={Layout.rowBetween}>
-                              <View
-                                style={{ flex: 1, paddingRight: Spacing.md }}
-                              >
-                                <Text style={TextStyles.body}>{item.name}</Text>
-                                <Text style={TextStyles.small}>
-                                  {item.quantity}
-                                </Text>
-                              </View>
-
-                              <View style={Layout.row}>
-                                <View style={badge.container as any}>
-                                  <Text style={badge.text as any}>
-                                    {badge.label}
-                                  </Text>
-                                </View>
-
-                                <InlineDeleteButton
-                                  onDelete={() => confirmDelete(cat.key, item)}
-                                />
-                              </View>
-                            </View>
-                          </View>
-                        </Swipeable>
-                      );
-                    })}
+                    .map((item) => (
+                      <PantryRow
+                        key={`${cat.key}:${item.id}`}
+                        item={item}
+                        bulkMode={bulkMode}
+                        isSearching={isSearching}
+                        checked={isSelected(cat.key, item.id)}
+                        onToggle={() => {
+                          if (!bulkMode) return;
+                          Haptics.selectionAsync();
+                          toggleSelected(cat.key, item.id);
+                        }}
+                        onPressDelete={() => confirmDelete(cat.key, item)}
+                        onSwipeDelete={() => deleteItem(cat.key, item.id)}
+                      />
+                    ))}
                 </View>
               )}
 
@@ -901,6 +661,61 @@ export default function PantryScreen() {
             </View>
           )}
       </ScrollView>
+      {bulkMode && selectedCount > 0 && (
+        <View
+          style={{
+            position: "absolute",
+            left: Spacing.lg,
+            right: Spacing.lg,
+            bottom: undo ? Spacing.lg + 56 : Spacing.lg, // keeps it above undo
+            padding: Spacing.md,
+            borderRadius: 18,
+            backgroundColor: "rgba(20,20,20,0.92)",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={[TextStyles.small, { color: "#fff", flex: 1 }]}>
+            {selectedCount} selected
+          </Text>
+
+          <Pressable
+            onPress={clearSelection}
+            style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <Text
+              style={[TextStyles.small, { color: "#fff", fontWeight: "700" }]}
+            >
+              Clear
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              Alert.alert(
+                "Delete selected?",
+                `Delete ${selectedCount} items?`,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () => bulkDeleteSelected(),
+                  },
+                ]
+              );
+            }}
+            style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <Text
+              style={[TextStyles.small, { color: "#fff", fontWeight: "700" }]}
+            >
+              Delete
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       {undo && (
         <View
