@@ -193,16 +193,79 @@ export default function PantryScreen() {
     });
     setUndo(null);
   };
+  const deleteAllExpired = () => {
+    Alert.alert(
+      "Delete all expired?",
+      "This will permanently remove all expired items.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            setPantry((prev) => {
+              const next = { ...prev };
 
-  const showCategoryMenu = (cat: Category) => {
-    Alert.alert(cat.label, "Category options", [
-      {
-        text: "Clear category (remove all items)",
-        style: "destructive",
-        onPress: () => {
-          setPantry((prev) => ({ ...prev, [cat.key]: [] }));
+              expiredItems.forEach((item) => {
+                next[item.categoryKey] = next[item.categoryKey].filter(
+                  (i) => i.id !== item.id
+                );
+              });
+
+              return next;
+            });
+          },
         },
-      },
+      ]
+    );
+  };
+  const remindLater = () => {
+    setPantry((prev) => {
+      const next = { ...prev };
+
+      expiringSoon.forEach((item) => {
+        next[item.categoryKey] = next[item.categoryKey].map((i) =>
+          i.id === item.id ? { ...i, expiresInDays: i.expiresInDays + 3 } : i
+        );
+      });
+
+      return next;
+    });
+  };
+
+  type MenuCategory =
+    | { type: "normal"; cat: Category }
+    | { type: "expired" }
+    | { type: "expiring" };
+
+  const showCategoryMenu = (menu: MenuCategory) => {
+    if (menu.type === "normal") {
+      const { cat } = menu;
+      Alert.alert(cat.label, "Category options", [
+        {
+          text: "Clear category (remove all items)",
+          style: "destructive",
+          onPress: () => setPantry((prev) => ({ ...prev, [cat.key]: [] })),
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+
+    if (menu.type === "expired") {
+      Alert.alert("Expired", "Category options", [
+        {
+          text: "Delete all expired",
+          style: "destructive",
+          onPress: deleteAllExpired,
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+
+    Alert.alert("Expiring soon", "Category options", [
+      { text: "Remind later", onPress: remindLater },
       { text: "Cancel", style: "cancel" },
     ]);
   };
@@ -441,14 +504,34 @@ export default function PantryScreen() {
                   </Text>
                 </View>
               </View>
+              <View style={Layout.row}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={(e) => {
+                    // @ts-ignore
+                    e?.stopPropagation?.();
+                    showCategoryMenu({ type: "expired" });
+                  }}
+                  style={{
+                    paddingHorizontal: Spacing.sm,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={18}
+                    color={Colors.textLight}
+                  />
+                </TouchableOpacity>
 
-              <Ionicons
-                name={
-                  openExpired ? "chevron-up-outline" : "chevron-down-outline"
-                }
-                size={20}
-                color={Colors.textLight}
-              />
+                <Ionicons
+                  name={
+                    openExpired ? "chevron-up-outline" : "chevron-down-outline"
+                  }
+                  size={20}
+                  color={Colors.textLight}
+                />
+              </View>
             </TouchableOpacity>
 
             {openExpired && (
@@ -514,13 +597,34 @@ export default function PantryScreen() {
                 </View>
               </View>
 
-              <Ionicons
-                name={
-                  openExpiring ? "chevron-up-outline" : "chevron-down-outline"
-                }
-                size={20}
-                color={Colors.textLight}
-              />
+              <View style={Layout.row}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={(e) => {
+                    // @ts-ignore
+                    e?.stopPropagation?.();
+                    showCategoryMenu({ type: "expiring" });
+                  }}
+                  style={{
+                    paddingHorizontal: Spacing.sm,
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={18}
+                    color={Colors.textLight}
+                  />
+                </TouchableOpacity>
+
+                <Ionicons
+                  name={
+                    openExpiring ? "chevron-up-outline" : "chevron-down-outline"
+                  }
+                  size={20}
+                  color={Colors.textLight}
+                />
+              </View>
             </TouchableOpacity>
 
             {openExpiring && (
@@ -592,7 +696,7 @@ export default function PantryScreen() {
                     onPress={(e) => {
                       // @ts-ignore
                       e?.stopPropagation?.();
-                      showCategoryMenu(cat);
+                      showCategoryMenu({ type: "normal", cat });
                     }}
                     style={{
                       paddingHorizontal: Spacing.sm,
