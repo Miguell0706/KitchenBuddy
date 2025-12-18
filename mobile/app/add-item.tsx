@@ -11,8 +11,6 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-
 import { Colors, Spacing } from "@/constants/theme";
 import {
   ButtonStyles,
@@ -20,21 +18,10 @@ import {
   Layout,
   TextStyles,
 } from "@/constants/styles";
-
-type CategoryKey =
-  | "produce"
-  | "meatSeafood"
-  | "dairyEggs"
-  | "bakery"
-  | "pantry"
-  | "condiments"
-  | "spices"
-  | "beverages"
-  | "frozen"
-  | "snacks"
-  | "pet"
-  | "household"
-  | "supplements";
+import { router } from "expo-router";
+import type { CategoryKey } from "@/features/pantry/types";
+import { usePantryStore } from "@/features/pantry/store";
+import * as Haptics from "expo-haptics";
 
 const CATEGORIES: {
   key: CategoryKey;
@@ -95,7 +82,6 @@ const EXPIRY_PRESETS: ExpiryPreset[] = [
   { key: "none", label: "No expiry", value: "none" },
   { key: "custom", label: "Custom", value: "custom" },
 ];
-
 function Chip({
   label,
   selected,
@@ -129,6 +115,7 @@ export default function AddItemModal() {
   const [qty, setQty] = useState(""); // optional
   const [category, setCategory] = useState<CategoryKey>("produce");
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const addItem = usePantryStore((s) => s.addItem);
 
   // expiry selection
   // "auto" means use DEFAULT_EXPIRY_BY_CATEGORY
@@ -149,7 +136,7 @@ export default function AddItemModal() {
     if (typeof router.canGoBack === "function" && router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(tabs)");
+      router.back();
     }
   };
 
@@ -177,14 +164,17 @@ export default function AddItemModal() {
 
     const quantity = qty.trim() || "1";
 
-    const expiryText =
-      computedExpiry === "none" ? "No expiry" : `${computedExpiry} day(s)`;
+    const expiresInDays = computedExpiry === "none" ? 9999 : computedExpiry;
 
-    Alert.alert(
-      "Added ✅",
-      `${trimmed} (${quantity}) → ${categoryLabel}\nExpiry: ${expiryText}`,
-      [{ text: "OK", onPress: close }]
-    );
+    addItem(category, {
+      id: `${Date.now()}`, // simple unique id for V1
+      name: trimmed,
+      quantity,
+      expiresInDays,
+    });
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    close();
   };
 
   return (
@@ -235,7 +225,7 @@ export default function AddItemModal() {
           <View>
             <Text style={TextStyles.screenTitle}>Add item</Text>
             <Text style={TextStyles.bodyMuted}>
-              Only the name is required. Defaults to produce.{" "}
+              Only the name is required. Defaults to produce.
             </Text>
           </View>
 
@@ -403,6 +393,7 @@ export default function AddItemModal() {
                       key={c.key}
                       onPress={() => {
                         setCategory(c.key);
+                        setExpiryMode("auto");
                         setCategoryOpen(false); // auto-collapse after pick
                       }}
                       style={[

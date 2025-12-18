@@ -18,7 +18,6 @@ import {
   Layout,
   ButtonStyles,
 } from "@/constants/styles";
-import { MOCK_PANTRY } from "@/features/pantry/mock";
 import {
   CATEGORIES,
   ALL_CATEGORY_KEYS,
@@ -27,6 +26,7 @@ import {
 import { PantryRow } from "@/features/pantry/components/PantryRow";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { matchesQuery } from "@/features/pantry/utils";
+import { usePantryStore } from "@/features/pantry/store";
 
 import { Colors, Spacing } from "@/constants/theme";
 
@@ -37,8 +37,8 @@ type ExpiringRow = PantryItem & {
 type Category = (typeof CATEGORIES)[number];
 
 export default function PantryScreen() {
-  const [pantry, setPantry] =
-    useState<Record<CategoryKey, PantryItem[]>>(MOCK_PANTRY);
+  const pantry = usePantryStore((s) => s.pantry);
+  const setPantry = usePantryStore((s) => s.setPantry);
 
   const [undo, setUndo] = useState<{
     item: PantryItem;
@@ -543,11 +543,19 @@ export default function PantryScreen() {
                     bulkMode={bulkMode}
                     isSearching={isSearching}
                     checked={isSelected(item.categoryKey, item.id)}
-                    onToggle={() => {
-                      if (!bulkMode) return;
+                    onToggleSelect={() => {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
+                    onPressEdit={() =>
+                      router.push({
+                        pathname: "/edit-item",
+                        params: {
+                          id: item.id,
+                          cat: item.categoryKey,
+                        },
+                      })
+                    }
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
                   />
@@ -636,11 +644,19 @@ export default function PantryScreen() {
                     bulkMode={bulkMode}
                     isSearching={isSearching}
                     checked={isSelected(item.categoryKey, item.id)}
-                    onToggle={() => {
-                      if (!bulkMode) return;
+                    onToggleSelect={() => {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
+                    onPressEdit={() =>
+                      router.push({
+                        pathname: "/edit-item",
+                        params: {
+                          id: item.id,
+                          cat: item.categoryKey,
+                        },
+                      })
+                    }
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
                   />
@@ -732,11 +748,19 @@ export default function PantryScreen() {
                         bulkMode={bulkMode}
                         isSearching={isSearching}
                         checked={isSelected(cat.key, item.id)}
-                        onToggle={() => {
-                          if (!bulkMode) return;
+                        onToggleSelect={() => {
                           Haptics.selectionAsync();
                           toggleSelected(cat.key, item.id);
                         }}
+                        onPressEdit={() =>
+                          router.push({
+                            pathname: "/edit-item",
+                            params: {
+                              id: item.id,
+                              cat: cat.key,
+                            },
+                          })
+                        }
                         onPressDelete={() => confirmDelete(cat.key, item)}
                         onSwipeDelete={() => deleteItem(cat.key, item.id)}
                       />

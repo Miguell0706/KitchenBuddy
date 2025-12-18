@@ -15,7 +15,8 @@ type Props = {
   isSearching: boolean;
   checked: boolean;
 
-  onToggle: () => void;
+  onToggleSelect: () => void; // bulk only
+  onPressEdit: () => void; // normal tap
 
   onPressDelete: () => void; // confirm
   onSwipeDelete: () => void; // instant
@@ -26,14 +27,20 @@ export function PantryRow({
   bulkMode,
   isSearching,
   checked,
-  onToggle,
+  onToggleSelect,
+  onPressEdit,
   onPressDelete,
   onSwipeDelete,
 }: Props) {
   const badge = getExpiryBadge(item);
 
   const content = (
-    <Pressable onPress={onToggle}>
+    <Pressable
+      onPress={() => {
+        if (bulkMode) onToggleSelect();
+        else onPressEdit();
+      }}
+    >
       <View style={CardStyles.pantryItem}>
         <View style={Layout.rowBetween}>
           <View style={[Layout.row, { flex: 1, paddingRight: Spacing.md }]}>
@@ -107,7 +114,12 @@ function BulkCheckbox({ checked }: { checked: boolean }) {
 function InlineDeleteButton({ onDelete }: { onDelete: () => void }) {
   return (
     <Pressable
-      onPress={onDelete}
+      onPress={(e) => {
+        // prevent also triggering the row Pressable (edit/select)
+        // @ts-ignore
+        e?.stopPropagation?.();
+        onDelete();
+      }}
       hitSlop={6}
       style={({ pressed }) => ({
         marginLeft: Spacing.sm,
