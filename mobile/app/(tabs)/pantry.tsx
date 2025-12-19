@@ -28,6 +28,7 @@ import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { matchesQuery } from "@/features/pantry/utils";
 import { usePantryStore } from "@/features/pantry/store";
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
+import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
 import { Colors, Spacing } from "@/constants/theme";
 
 type ExpiringRow = PantryItem & {
@@ -68,7 +69,11 @@ export default function PantryScreen() {
   });
   const [bulkMode, setBulkMode] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<{
+    id: string;
+    categoryKey: CategoryKey;
+  } | null>(null);
   // selected ids per category (so ids can collide across categories safely)
   const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
     () =>
@@ -141,6 +146,10 @@ export default function PantryScreen() {
 
     clearSelection();
     setBulkMode(false);
+  };
+  const openEdit = (categoryKey: CategoryKey, id: string) => {
+    setEditTarget({ categoryKey, id });
+    setEditOpen(true);
   };
 
   const confirmDelete = (categoryKey: CategoryKey, item: PantryItem) => {
@@ -610,15 +619,7 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
-                    onPressEdit={() =>
-                      router.push({
-                        pathname: "/edit-item",
-                        params: {
-                          id: item.id,
-                          cat: item.categoryKey,
-                        },
-                      })
-                    }
+                    onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
                   />
@@ -711,15 +712,7 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
-                    onPressEdit={() =>
-                      router.push({
-                        pathname: "/edit-item",
-                        params: {
-                          id: item.id,
-                          cat: item.categoryKey,
-                        },
-                      })
-                    }
+                    onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
                   />
@@ -814,15 +807,7 @@ export default function PantryScreen() {
                           Haptics.selectionAsync();
                           toggleSelected(cat.key, item.id);
                         }}
-                        onPressEdit={() =>
-                          router.push({
-                            pathname: "/edit-item",
-                            params: {
-                              id: item.id,
-                              cat: cat.key,
-                            },
-                          })
-                        }
+                        onPressEdit={() => openEdit(cat.key, item.id)}
                         onPressDelete={() => confirmDelete(cat.key, item)}
                         onSwipeDelete={() => deleteItem(cat.key, item.id)}
                       />
@@ -943,14 +928,14 @@ export default function PantryScreen() {
       <QuickAddSheet
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
-        onAdd={(name, categoryKey) => {
-          addItem(categoryKey, {
-            id: String(Date.now()), // or nanoid()
-            name,
-            quantity: "",
-            expiresInDays: 9999,
-          });
+      />
+      <EditItemSheet
+        open={editOpen}
+        onClose={() => {
+          setEditOpen(false);
+          setEditTarget(null);
         }}
+        target={editTarget}
       />
     </View>
   );

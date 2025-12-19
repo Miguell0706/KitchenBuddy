@@ -26,7 +26,6 @@ import { CATEGORY_DEFAULT_EXPIRY } from "@/features/pantry/constants";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onAdd: (name: string, categoryKey: CategoryKey) => void;
 };
 // If you already have a CATEGORIES constant elsewhere, import it instead.
 const CATEGORY_OPTIONS: {
@@ -102,12 +101,7 @@ export function QuickAddSheet({ open, onClose }: Props) {
         }}
       >
         {/* Stop press bubbling so taps inside sheet don't close it */}
-        <Pressable
-          onPress={(e) => {
-            // @ts-ignore
-            e?.stopPropagation?.();
-          }}
-        >
+        <Pressable onPress={() => {}} style={{ width: "100%" }}>
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : undefined}
           >
