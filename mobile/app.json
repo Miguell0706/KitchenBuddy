@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access to scan receipts.",
+        "NSPhotoLibraryUsageDescription": "We need photo access to select receipt images."
+      }
     },
     "android": {
       "adaptiveIcon": {
