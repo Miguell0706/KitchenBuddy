@@ -22,7 +22,21 @@ export const CATEGORIES: Category[] = [
   { key: "household", label: "Household (Non-food)", icon: "home-outline" },
   { key: "supplements", label: "Supplements / Vitamins", icon: "medkit-outline" },
 ];
-
+export const CATEGORY_DEFAULT_EXPIRY: Record<CategoryKey, number | "none"> = {
+  produce: 14,
+  meatSeafood: 7,
+  dairyEggs: 20,
+  bakery: 6,
+  pantry: 60,
+  condiments: 120,
+  spices: "none",
+  beverages: 24,
+  frozen: "none",
+  snacks: 60,
+  pet: 80,
+  household: "none",
+  supplements: "none",
+};
 export const ALL_CATEGORY_KEYS: CategoryKey[] = CATEGORIES.map((c) => c.key);
 
 export function setAllCategories(open: boolean): Record<CategoryKey, boolean> {

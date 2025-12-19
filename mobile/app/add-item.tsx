@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -20,6 +20,7 @@ import {
 } from "@/constants/styles";
 import { router } from "expo-router";
 import type { CategoryKey } from "@/features/pantry/types";
+import { CATEGORY_DEFAULT_EXPIRY } from "@/features/pantry/constants";
 import { usePantryStore } from "@/features/pantry/store";
 import * as Haptics from "expo-haptics";
 
@@ -46,23 +47,7 @@ const CATEGORIES: {
     icon: "medkit-outline",
   },
 ];
-
 // Reasonable defaults if user doesn’t choose anything
-const DEFAULT_EXPIRY_BY_CATEGORY: Record<CategoryKey, number | "none"> = {
-  produce: 7,
-  meatSeafood: 3,
-  dairyEggs: 10,
-  bakery: 4,
-  pantry: 30,
-  condiments: 90,
-  spices: "none",
-  beverages: 14,
-  frozen: "none",
-  snacks: 45,
-  pet: 60,
-  household: "none",
-  supplements: "none",
-};
 
 type ExpiryPreset =
   | { key: "1"; label: "1d"; value: 1 }
@@ -129,6 +114,12 @@ export default function AddItemModal() {
     () => CATEGORIES.find((c) => c.key === category)?.label ?? "Category",
     [category]
   );
+  useEffect(() => {
+    if (expiryMode !== "auto") return;
+    const d = CATEGORY_DEFAULT_EXPIRY[category];
+    if (typeof d === "number") setPresetDays(d);
+    else setPresetDays(7); // harmless display fallback
+  }, [category, expiryMode]);
 
   const close = () => {
     // avoid GO_BACK warning when no history (fast refresh / deep link)
@@ -146,13 +137,13 @@ export default function AddItemModal() {
     if (expiryMode === "custom") {
       const n = parseInt(customDays, 10);
       if (!Number.isFinite(n) || n <= 0)
-        return DEFAULT_EXPIRY_BY_CATEGORY[category] === "none"
+        return CATEGORY_DEFAULT_EXPIRY[category] === "none"
           ? "none"
-          : (DEFAULT_EXPIRY_BY_CATEGORY[category] as number);
+          : (CATEGORY_DEFAULT_EXPIRY[category] as number);
       return n;
     }
     // auto
-    return DEFAULT_EXPIRY_BY_CATEGORY[category];
+    return CATEGORY_DEFAULT_EXPIRY[category];
   }, [expiryMode, presetDays, customDays, category]);
 
   const onSave = () => {
@@ -219,10 +210,16 @@ export default function AddItemModal() {
         <View
           style={[
             Layout.rowBetween,
-            { paddingHorizontal: Spacing.lg, marginBottom: Spacing.md },
+            {
+              paddingHorizontal: Spacing.lg,
+              paddingRight: Spacing.lg + Spacing.sm, // optional extra breathing room
+              marginBottom: Spacing.md,
+              alignItems: "center",
+              minHeight: 52,
+            },
           ]}
         >
-          <View>
+          <View style={{ flex: 1, paddingRight: Spacing.md }}>
             <Text style={TextStyles.screenTitle}>Add item</Text>
             <Text style={TextStyles.bodyMuted}>
               Only the name is required. Defaults to produce.
@@ -232,6 +229,7 @@ export default function AddItemModal() {
           <TouchableOpacity
             onPress={close}
             activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{
               padding: Spacing.sm,
               borderRadius: 999,

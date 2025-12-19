@@ -69,7 +69,7 @@ export function PantryRow({
   );
 
   // no swipe while bulk-selecting or searching
-  if (bulkMode || isSearching) return content;
+  if (bulkMode) return content;
 
   return (
     <Swipeable

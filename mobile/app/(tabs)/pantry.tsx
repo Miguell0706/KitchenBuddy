@@ -27,7 +27,7 @@ import { PantryRow } from "@/features/pantry/components/PantryRow";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { matchesQuery } from "@/features/pantry/utils";
 import { usePantryStore } from "@/features/pantry/store";
-
+import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 import { Colors, Spacing } from "@/constants/theme";
 
 type ExpiringRow = PantryItem & {
@@ -67,6 +67,7 @@ export default function PantryScreen() {
     supplements: false,
   });
   const [bulkMode, setBulkMode] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // selected ids per category (so ids can collide across categories safely)
   const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
@@ -155,7 +156,7 @@ export default function PantryScreen() {
       },
     ]);
   };
-
+  const addItem = usePantryStore((s) => s.addItem);
   const toggleAll = () => {
     const nextOpen = !allOpen;
     setOpenCategories(setAllCategories(nextOpen));
@@ -315,6 +316,15 @@ export default function PantryScreen() {
     flat.sort((a, b) => a.expiresInDays - b.expiresInDays);
     return flat;
   }, [pantry, q]);
+  useEffect(() => {
+    if (!isSearching) return;
+
+    setOpenCategories((prev) => {
+      const next = { ...prev };
+      for (const c of CATEGORIES) next[c.key] = true;
+      return next;
+    });
+  }, [isSearching]);
 
   // ✅ Categories filtered by search + auto expand when searching
   const visibleCategories = useMemo(() => {
@@ -420,48 +430,101 @@ export default function PantryScreen() {
             </View>
           )}
         </View>
-
-        <View style={[Layout.rowBetween, { marginBottom: Spacing.md }]}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: Spacing.sm,
+            gap: Spacing.xs,
+          }}
+        >
+          {/* Bulk */}
           <TouchableOpacity
-            style={[
-              ButtonStyles.ghost,
-              { paddingHorizontal: Spacing.md, opacity: bulkMode ? 1 : 0.95 },
-            ]}
-            activeOpacity={0.8}
             onPress={toggleBulkMode}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 20,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: bulkMode
+                ? "rgba(0,0,0,0.10)"
+                : "rgba(0,0,0,0.05)",
+            }}
           >
-            <View style={Layout.rowCenter}>
-              <Ionicons
-                name={bulkMode ? "checkbox" : "square-outline"}
-                size={16}
-                color={Colors.text}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={ButtonStyles.ghostText}>
-                {bulkMode ? `Bulk Edit (${selectedCount})` : "Bulk Edit"}
-              </Text>
-            </View>
+            <Ionicons
+              name={bulkMode ? "checkbox" : "square-outline"}
+              size={18}
+              color={Colors.text}
+            />
+            <Text
+              style={{
+                fontSize: 15,
+                marginLeft: 6,
+                color: Colors.text,
+              }}
+              numberOfLines={1}
+            >
+              {bulkMode ? `Bulk ${selectedCount}` : "Bulk"}
+            </Text>
           </TouchableOpacity>
 
+          {/* Quick add */}
           <TouchableOpacity
-            style={[
-              ButtonStyles.ghost,
-              { paddingHorizontal: Spacing.md, opacity: bulkMode ? 0.5 : 1 },
-            ]}
-            activeOpacity={0.8}
-            onPress={bulkMode ? undefined : toggleAll}
+            onPress={() => setQuickAddOpen(true)}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 20,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: "rgba(0,0,0,0.05)",
+            }}
           >
-            <View style={Layout.rowCenter}>
-              <Ionicons
-                name={allOpen ? "contract-outline" : "expand-outline"}
-                size={16}
-                color={Colors.text}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={ButtonStyles.ghostText}>
-                {allOpen ? "Collapse all" : "Expand all"}
-              </Text>
-            </View>
+            <Ionicons name="add" size={18} color={Colors.text} />
+            <Text
+              style={{
+                fontSize: 15,
+                marginLeft: 6,
+                color: Colors.text,
+              }}
+              numberOfLines={1}
+            >
+              Add
+            </Text>
+          </TouchableOpacity>
+
+          {/* Expand / Collapse (always enabled) */}
+          <TouchableOpacity
+            onPress={toggleAll}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 20,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: "rgba(0,0,0,0.05)",
+            }}
+          >
+            <Ionicons
+              name={allOpen ? "contract-outline" : "expand-outline"}
+              size={18}
+              color={Colors.text}
+            />
+            <Text
+              style={{
+                fontSize: 15,
+                marginLeft: 6,
+                color: Colors.text,
+              }}
+              numberOfLines={1}
+            >
+              {allOpen ? "Collapse" : "Expand"}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -668,15 +731,14 @@ export default function PantryScreen() {
 
         {/* Categories */}
         {visibleCategories.map(({ cat, items }) => {
-          // ✅ force open while searching (power user)
-          const isOpen = isSearching ? true : openCategories[cat.key];
+          // ✅ force catgeories open once while searching (power user)
+          const isOpen = openCategories[cat.key];
 
           return (
             <View key={cat.key} style={{ marginBottom: Spacing.md }}>
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => {
-                  if (isSearching) return; // ✅ ignore taps during search
                   toggleCategory(cat.key);
                 }}
                 style={[
@@ -844,7 +906,6 @@ export default function PantryScreen() {
           </Pressable>
         </View>
       )}
-
       {undo && (
         <View
           style={{
@@ -879,6 +940,18 @@ export default function PantryScreen() {
           </Pressable>
         </View>
       )}
+      <QuickAddSheet
+        open={quickAddOpen}
+        onClose={() => setQuickAddOpen(false)}
+        onAdd={(name, categoryKey) => {
+          addItem(categoryKey, {
+            id: String(Date.now()), // or nanoid()
+            name,
+            quantity: "",
+            expiresInDays: 9999,
+          });
+        }}
+      />
     </View>
   );
 }
