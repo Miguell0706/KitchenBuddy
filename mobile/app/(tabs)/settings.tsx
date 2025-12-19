@@ -52,12 +52,12 @@ function Row({
 }
 
 export default function SettingsScreen() {
-  const [notifications, setNotifications] = useState(true);
-  const [expireBadges, setExpireBadges] = useState(true);
-  const [highAccuracyScan, setHighAccuracyScan] = useState(false);
+  const [expiryReminders, setExpiryReminders] = useState(true);
+  const [waterReminders, setWaterReminders] = useState(false);
 
   return (
     <ScrollView
+      style={{ backgroundColor: Colors.background }} // ✅ fixes phone vs emulator bg
       contentContainerStyle={{
         padding: Spacing.lg,
         paddingBottom: Spacing.xl,
@@ -65,9 +65,7 @@ export default function SettingsScreen() {
     >
       <View style={{ marginBottom: Spacing.md }}>
         <Text style={TextStyles.screenTitle}>Settings</Text>
-        <Text style={TextStyles.bodyMuted}>
-          Keep this boring + predictable.
-        </Text>
+        <Text style={TextStyles.bodyMuted}></Text>
       </View>
 
       {/* Notifications */}
@@ -80,8 +78,8 @@ export default function SettingsScreen() {
           subtitle="Get reminded before food expires"
           right={
             <Switch
-              value={notifications}
-              onValueChange={setNotifications}
+              value={expiryReminders}
+              onValueChange={setExpiryReminders}
               trackColor={{
                 true: "rgba(0,0,0,0.25)",
                 false: "rgba(0,0,0,0.15)",
@@ -92,13 +90,13 @@ export default function SettingsScreen() {
         />
 
         <Row
-          icon="alert-circle-outline"
-          title="Show expiring badges"
-          subtitle="Badges and counts in Pantry"
+          icon="water-outline"
+          title="Water reminders"
+          subtitle="Optional reminders to drink water"
           right={
             <Switch
-              value={expireBadges}
-              onValueChange={setExpireBadges}
+              value={waterReminders}
+              onValueChange={setWaterReminders}
               trackColor={{
                 true: "rgba(0,0,0,0.25)",
                 false: "rgba(0,0,0,0.15)",
@@ -114,29 +112,43 @@ export default function SettingsScreen() {
         <Text style={TextStyles.sectionTitle}>Scan</Text>
 
         <Row
-          icon="scan-outline"
-          title="High accuracy mode"
-          subtitle="Uses heavier processing (slower). Premium later."
+          icon="time-outline"
+          title="View previous scans"
+          subtitle="See your scan history "
+          onPress={() => Alert.alert("Scan history", "Placeholder.")}
           right={
-            <Switch
-              value={highAccuracyScan}
-              onValueChange={setHighAccuracyScan}
-              trackColor={{
-                true: "rgba(0,0,0,0.25)",
-                false: "rgba(0,0,0,0.15)",
-              }}
-              thumbColor={Colors.background}
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={Colors.textLight}
+            />
+          }
+        />
+      </View>
+
+      {/* Pantry */}
+      <View style={[CardStyles.subtle, { marginBottom: Spacing.md }]}>
+        <Text style={TextStyles.sectionTitle}>Pantry</Text>
+
+        <Row
+          icon="options-outline"
+          title="Change category expiry default dates"
+          subtitle="Set default expiry days per category"
+          onPress={() => Alert.alert("Category defaults", "Placeholder.")}
+          right={
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={Colors.textLight}
             />
           }
         />
 
         <Row
-          icon="sparkles-outline"
-          title="Rewards"
-          subtitle="Streaks + points for scanning (placeholder)"
-          onPress={() =>
-            Alert.alert("Rewards", "Rewards UI will live in Scan.")
-          }
+          icon="trash-outline"
+          title="View used/trashed items"
+          subtitle="Recently used or removed items"
+          onPress={() => Alert.alert("Used/trashed", "Placeholder.")}
           right={
             <Ionicons
               name="chevron-forward"
@@ -197,7 +209,7 @@ export default function SettingsScreen() {
         <Row
           icon="help-circle-outline"
           title="Help"
-          subtitle="FAQ + contact (placeholder)"
+          subtitle="FAQ + contact "
           onPress={() => Alert.alert("Help", "Placeholder.")}
           right={
             <Ionicons
@@ -212,7 +224,7 @@ export default function SettingsScreen() {
           icon="information-circle-outline"
           title="About"
           subtitle="KitchenBuddy v0.1"
-          onPress={() => Alert.alert("About", "KitchenBuddy (placeholder).")}
+          onPress={() => Alert.alert("About", "KitchenBuddy .")}
           right={
             <Ionicons
               name="chevron-forward"
