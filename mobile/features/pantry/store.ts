@@ -20,7 +20,21 @@ type PantryState = {
     patch: Partial<PantryItem>
   ) => void;
 };
+const NAME_MAX = 40;
 
+const normalizeItemPatch = (patch: Partial<PantryItem>) => {
+  const next = { ...patch };
+
+  if (typeof next.name === "string") {
+    next.name = next.name.trim().slice(0, NAME_MAX);
+  }
+
+  if (typeof next.quantity === "string") {
+    next.quantity = next.quantity.trim();
+  }
+
+  return next;
+};
 export const usePantryStore = create<PantryState>((set, get) => ({
   pantry: MOCK_PANTRY,
 
@@ -31,10 +45,12 @@ export const usePantryStore = create<PantryState>((set, get) => ({
   },
 
   addItem: (categoryKey, item) => {
+    const normalized = normalizeItemPatch(item) as PantryItem;
+
     set((state) => ({
       pantry: {
         ...state.pantry,
-        [categoryKey]: [item, ...state.pantry[categoryKey]],
+        [categoryKey]: [normalized, ...state.pantry[categoryKey]],
       },
     }));
   },
@@ -43,14 +59,17 @@ export const usePantryStore = create<PantryState>((set, get) => ({
     return get().pantry[categoryKey].find((i) => i.id === id);
   },
 
-  updateItem: (categoryKey, id, patch) => {
-    set((state) => ({
-      pantry: {
-        ...state.pantry,
-        [categoryKey]: state.pantry[categoryKey].map((i) =>
-          i.id === id ? { ...i, ...patch } : i
-        ),
-      },
-    }));
-  },
+updateItem: (categoryKey, id, patch) => {
+  const normalizedPatch = normalizeItemPatch(patch);
+
+  set((state) => ({
+    pantry: {
+      ...state.pantry,
+      [categoryKey]: state.pantry[categoryKey].map((i) =>
+        i.id === id ? { ...i, ...normalizedPatch } : i
+      ),
+    },
+  }));
+},
+
 }));

@@ -275,7 +275,7 @@ export default function PantryScreen() {
     }
 
     Alert.alert("Expiring soon", "Category options", [
-      { text: "Remind later", onPress: remindLater },
+      { text: "Remind later (+3 days)", onPress: remindLater },
       { text: "Cancel", style: "cancel" },
     ]);
   };

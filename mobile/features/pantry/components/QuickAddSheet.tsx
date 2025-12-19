@@ -69,15 +69,15 @@ export function QuickAddSheet({ open, onClose }: Props) {
   );
 
   const save = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    const normalizedName = name.trim().slice(0, 40);
+    if (!normalizedName) return;
 
     const d = CATEGORY_DEFAULT_EXPIRY[categoryKey];
     const expiresInDays = d === "none" ? 9999 : d;
 
     quickAddItem(categoryKey, {
       id: nanoid(),
-      name: trimmed,
+      name: normalizedName,
       quantity: "",
       expiresInDays,
     });
@@ -139,6 +139,7 @@ export function QuickAddSheet({ open, onClose }: Props) {
               <Text style={TextStyles.small}>Name</Text>
               <TextInput
                 value={name}
+                maxLength={40}
                 onChangeText={setName}
                 placeholder="e.g., Apples"
                 placeholderTextColor={Colors.textLight}

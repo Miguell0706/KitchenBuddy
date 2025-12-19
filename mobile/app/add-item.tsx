@@ -147,19 +147,19 @@ export default function AddItemModal() {
   }, [expiryMode, presetDays, customDays, category]);
 
   const onSave = () => {
-    const trimmed = name.trim();
-    if (!trimmed) {
+    const normalizedName = name.trim().slice(0, 40);
+
+    if (!normalizedName) {
       Alert.alert("Name required", "Type an item name to continue.");
       return;
     }
 
     const quantity = qty.trim() || "1";
-
     const expiresInDays = computedExpiry === "none" ? 9999 : computedExpiry;
 
     addItem(category, {
       id: `${Date.now()}`, // simple unique id for V1
-      name: trimmed,
+      name: normalizedName,
       quantity,
       expiresInDays,
     });
@@ -167,7 +167,6 @@ export default function AddItemModal() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     close();
   };
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -256,6 +255,7 @@ export default function AddItemModal() {
             </Text>
             <TextInput
               value={name}
+              maxLength={40}
               onChangeText={setName}
               placeholder="e.g., Spinach"
               placeholderTextColor={Colors.textLight}

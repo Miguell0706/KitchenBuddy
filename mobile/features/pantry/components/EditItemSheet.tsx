@@ -66,8 +66,8 @@ export function EditItemSheet({ open, onClose, target }: Props) {
   const save = () => {
     if (!target) return;
 
-    const trimmed = name.trim();
-    if (!trimmed) {
+    const normalizedName = name.trim().slice(0, 40);
+    if (!normalizedName) {
       Alert.alert("Missing name", "Please enter an item name.");
       return;
     }
@@ -81,7 +81,7 @@ export function EditItemSheet({ open, onClose, target }: Props) {
     }
 
     updateItem(target.categoryKey, target.id, {
-      name: trimmed,
+      name: normalizedName,
       quantity: quantity.trim(),
       ...(d === undefined ? {} : { expiresInDays: d }),
     });
@@ -149,6 +149,7 @@ export function EditItemSheet({ open, onClose, target }: Props) {
               <Text style={TextStyles.small}>Name</Text>
               <TextInput
                 value={name}
+                maxLength={40}
                 onChangeText={setName}
                 placeholder="e.g., Milk"
                 placeholderTextColor={Colors.textLight}
