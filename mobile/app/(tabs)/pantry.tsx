@@ -30,6 +30,8 @@ import { usePantryStore } from "@/features/pantry/store";
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
 import { Colors, Spacing } from "@/constants/theme";
+import { BulkExpirySheet } from "@/features/pantry/components/BulkExpirySheet";
+import { BulkMoveSheet } from "@/features/pantry/components/BulkMoveSheet";
 
 type ExpiringRow = PantryItem & {
   categoryKey: CategoryKey;
@@ -38,6 +40,8 @@ type ExpiringRow = PantryItem & {
 type Category = (typeof CATEGORIES)[number];
 
 export default function PantryScreen() {
+  const [bulkExpiryOpen, setBulkExpiryOpen] = useState(false);
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const pantry = usePantryStore((s) => s.pantry);
   const setPantry = usePantryStore((s) => s.setPantry);
   const [undo, setUndo] = useState<{
@@ -147,6 +151,77 @@ export default function PantryScreen() {
     clearSelection();
     setBulkMode(false);
   };
+  const applyToSelected = (
+    updater: (item: PantryItem, categoryKey: CategoryKey) => PantryItem | null,
+    moveToCategoryKey?: CategoryKey
+  ) => {
+    setPantry((prev) => {
+      let next: Record<CategoryKey, PantryItem[]> = { ...prev };
+
+      // optional move bucket
+      const moved: PantryItem[] = [];
+
+      for (const k of ALL_CATEGORY_KEYS) {
+        if (selected[k].size === 0) continue;
+
+        const list = prev[k];
+        const out: PantryItem[] = [];
+
+        for (const it of list) {
+          if (!selected[k].has(it.id)) {
+            out.push(it);
+            continue;
+          }
+
+          const updated = updater(it, k);
+
+          // null means "remove" (used)
+          if (updated === null) continue;
+
+          // move?
+          if (moveToCategoryKey && moveToCategoryKey !== k) moved.push(updated);
+          else out.push(updated);
+        }
+
+        next[k] = out;
+      }
+
+      if (moveToCategoryKey && moved.length > 0) {
+        next[moveToCategoryKey] = [...next[moveToCategoryKey], ...moved];
+      }
+
+      return next;
+    });
+
+    clearSelection();
+    setBulkMode(false);
+  };
+  const bulkMarkUsed = () => {
+    setUndo(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    applyToSelected(() => null); // null => remove
+  };
+  const bulkAddExpiryDays = (delta: number) => {
+    Haptics.selectionAsync();
+    applyToSelected((it) => ({
+      ...it,
+      expiresInDays:
+        it.expiresInDays >= 9999
+          ? it.expiresInDays
+          : Math.max(0, it.expiresInDays + delta),
+    }));
+  };
+
+  const bulkSetExpiryDays = (value: number) => {
+    Haptics.selectionAsync();
+    applyToSelected((it) => ({
+      ...it,
+      expiresInDays:
+        it.expiresInDays >= 9999 ? it.expiresInDays : Math.max(0, value),
+    }));
+  };
+
   const openEdit = (categoryKey: CategoryKey, id: string) => {
     setEditTarget({ categoryKey, id });
     setEditOpen(true);
@@ -249,6 +324,13 @@ export default function PantryScreen() {
 
       return next;
     });
+  };
+  const openBulkExpiryMenu = () => setBulkExpiryOpen(true);
+  const openBulkMoveMenu = () => setBulkMoveOpen(true);
+
+  const bulkMoveTo = (dest: CategoryKey) => {
+    Haptics.selectionAsync();
+    applyToSelected((it) => it, dest);
   };
 
   type MenuCategory =
@@ -736,7 +818,6 @@ export default function PantryScreen() {
         {visibleCategories.map(({ cat, items }) => {
           // ✅ force catgeories open once while searching (power user)
           const isOpen = openCategories[cat.key];
-
           return (
             <View key={cat.key} style={{ marginBottom: Spacing.md }}>
               <TouchableOpacity
@@ -853,18 +934,55 @@ export default function PantryScreen() {
             position: "absolute",
             left: Spacing.lg,
             right: Spacing.lg,
-            bottom: undo ? Spacing.lg + 56 : Spacing.lg, // keeps it above undo
+            bottom: undo ? Spacing.lg + 56 : Spacing.lg,
             padding: Spacing.md,
             borderRadius: 18,
             backgroundColor: "rgba(20,20,20,0.92)",
             flexDirection: "row",
             alignItems: "center",
-            justifyContent: "space-between",
+
+            // ✅ key changes:
+            flexWrap: "wrap",
+            justifyContent: "flex-start",
+            gap: 6, // if your RN version supports gap; if not, remove it
           }}
         >
-          <Text style={[TextStyles.small, { color: "#fff", flex: 1 }]}>
+          <Text style={[TextStyles.small, { color: "#fff" }]} numberOfLines={1}>
             {selectedCount} selected
           </Text>
+
+          <Pressable
+            onPress={bulkMarkUsed}
+            style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <Text
+              style={[TextStyles.small, { color: "#fff", fontWeight: "700" }]}
+            >
+              Used
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={openBulkExpiryMenu}
+            style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <Text
+              style={[TextStyles.small, { color: "#fff", fontWeight: "700" }]}
+            >
+              Expiry
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={openBulkMoveMenu}
+            style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+          >
+            <Text
+              style={[TextStyles.small, { color: "#fff", fontWeight: "700" }]}
+            >
+              Move
+            </Text>
+          </Pressable>
 
           <Pressable
             onPress={clearSelection}
@@ -887,7 +1005,7 @@ export default function PantryScreen() {
                   {
                     text: "Delete",
                     style: "destructive",
-                    onPress: () => bulkDeleteSelected(),
+                    onPress: bulkDeleteSelected,
                   },
                 ]
               );
@@ -902,6 +1020,7 @@ export default function PantryScreen() {
           </Pressable>
         </View>
       )}
+
       {undo && (
         <View
           style={{
@@ -937,6 +1056,19 @@ export default function PantryScreen() {
           </Pressable>
         </View>
       )}
+      <BulkExpirySheet
+        open={bulkExpiryOpen}
+        onClose={() => setBulkExpiryOpen(false)}
+        onAddDays={bulkAddExpiryDays}
+        onSetDays={bulkSetExpiryDays}
+      />
+
+      <BulkMoveSheet
+        open={bulkMoveOpen}
+        onClose={() => setBulkMoveOpen(false)}
+        onMoveTo={bulkMoveTo}
+      />
+
       <QuickAddSheet
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
