@@ -40,11 +40,11 @@ type Category = (typeof CATEGORIES)[number];
 export default function PantryScreen() {
   const pantry = usePantryStore((s) => s.pantry);
   const setPantry = usePantryStore((s) => s.setPantry);
-
   const [undo, setUndo] = useState<{
     item: PantryItem;
     categoryKey: CategoryKey;
     index: number;
+    action: "delete" | "used";
   } | null>(null);
 
   const [openExpiring, setOpenExpiring] = useState(true);
@@ -177,18 +177,26 @@ export default function PantryScreen() {
     setOpenCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const deleteItem = (categoryKey: CategoryKey, itemId: string) => {
+  const deleteItem = (
+    categoryKey: CategoryKey,
+    itemId: string,
+    action: "delete" | "used" = "delete"
+  ) => {
     setPantry((prev) => {
       const list = prev[categoryKey];
       const index = list.findIndex((x) => x.id === itemId);
       if (index === -1) return prev;
 
       const item = list[index];
-      setUndo({ item, categoryKey, index });
+      setUndo({ item, categoryKey, index, action });
 
       const nextList = list.filter((x) => x.id !== itemId);
       return { ...prev, [categoryKey]: nextList };
     });
+  };
+  const markUsed = (categoryKey: CategoryKey, id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    deleteItem(categoryKey, id, "used");
   };
 
   const undoDelete = () => {
@@ -619,6 +627,7 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
+                    onPressUsed={() => markUsed(item.categoryKey, item.id)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
@@ -712,6 +721,7 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
+                    onPressUsed={() => markUsed(item.categoryKey, item.id)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
@@ -807,6 +817,7 @@ export default function PantryScreen() {
                           Haptics.selectionAsync();
                           toggleSelected(cat.key, item.id);
                         }}
+                        onPressUsed={() => markUsed(cat.key, item.id)}
                         onPressEdit={() => openEdit(cat.key, item.id)}
                         onPressDelete={() => confirmDelete(cat.key, item)}
                         onSwipeDelete={() => deleteItem(cat.key, item.id)}
@@ -907,7 +918,8 @@ export default function PantryScreen() {
           }}
         >
           <Text style={[TextStyles.small, { color: "#fff", flex: 1 }]}>
-            Deleted {undo.item.name}
+            {undo.action === "used" ? "Marked used" : "Deleted"}{" "}
+            {undo.item.name}
           </Text>
 
           <Pressable

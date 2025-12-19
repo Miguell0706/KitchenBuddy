@@ -14,7 +14,7 @@ type Props = {
   bulkMode: boolean;
   isSearching: boolean;
   checked: boolean;
-
+  onPressUsed: () => void;
   onToggleSelect: () => void; // bulk only
   onPressEdit: () => void; // normal tap
 
@@ -31,6 +31,7 @@ export function PantryRow({
   onPressEdit,
   onPressDelete,
   onSwipeDelete,
+  onPressUsed,
 }: Props) {
   const badge = getExpiryBadge(item);
 
@@ -57,6 +58,15 @@ export function PantryRow({
           </View>
 
           <View style={Layout.row}>
+            {!bulkMode && (
+              <UsedButton
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  onPressUsed();
+                }}
+              />
+            )}
+
             <View style={badge.container as any}>
               <Text style={badge.text as any}>{badge.label}</Text>
             </View>
@@ -90,6 +100,40 @@ export function PantryRow({
 }
 
 /* ───────────────── helpers ───────────────── */
+function UsedButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={(e) => {
+        // @ts-ignore
+        e?.stopPropagation?.();
+        onPress();
+      }}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        marginRight: Spacing.sm,
+        backgroundColor: pressed
+          ? "rgba(76, 175, 80, 0.18)"
+          : "rgba(76, 175, 80, 0.10)",
+        borderWidth: 1,
+        borderColor: "rgba(76, 175, 80, 0.22)",
+        alignItems: "center",
+        justifyContent: "center",
+      })}
+    >
+      <Text
+        style={[
+          TextStyles.small,
+          { color: "rgba(30, 90, 35, 0.95)", fontWeight: "700" },
+        ]}
+      >
+        Used
+      </Text>
+    </Pressable>
+  );
+}
 
 function BulkCheckbox({ checked }: { checked: boolean }) {
   return (
