@@ -74,6 +74,11 @@ function isNoiseOrMeta(upper: string) {
     "SAVED",
     "CREDIT",
     "DEBIT",
+    "YOU SAVED",
+    "ONLY:",
+    "ORDER TOTAL",
+    "GRAND TOTAL",
+    "SALES TAX",
   ];
 
   if (noise.some((k) => upper.includes(k))) return true;
@@ -81,8 +86,14 @@ function isNoiseOrMeta(upper: string) {
   if (/CASHI[EIA]R/.test(upper)) return true;
   if (upper.includes("CASH") && upper.includes("IER")) return true;
 
-  // Store name (limited, intentional)
-  if (upper.includes("WALMART")) return true;
+  // header-like store line
+  if (
+    upper.length < 20 &&
+    !/\d/.test(upper) &&
+    (upper.endsWith(">") || upper.endsWith(":"))
+  ) {
+    return true;
+  }
 
   // Weight/math
   if (upper.includes("@")) return true;
@@ -113,16 +124,105 @@ function cleanName(line: string) {
   // Drop trailing single-letter flags (F/E/T/X/I etc)
   s = s.replace(/\s+[A-Z]$/i, "").trim();
 
-  // Drop long numeric codes at end (10-14 digits), with optional trailing letter
-  s = s.replace(/\s+\d{10,14}[A-Z]?$/i, "").trim();
+  // Drop trailing SKU-ish token (digits/letters mixed), ex: 000000004011KF, 0078B9530001, 00470S406012
+  s = s.replace(/\s+[A-ZÀ-ÖØ-Ý0-9]{8,}$/i, "").trim();
 
-  // Drop codes like "000000004072KF"
-  s = s.replace(/\s+\d{6,}[A-Z]{1,4}$/i, "").trim();
+  // Drop trailing numeric chunks like "08156500 1075"
+  s = s.replace(/\s+\d{3,}(\s+\d{3,})+$/i, "").trim();
 
-  // Drop trailing tiny fragments like "F" left behind
-  s = s.replace(/\s+F$/i, "").trim();
+  // Drop trailing long pure-digit token
+  s = s.replace(/\s+\d{8,}$/i, "").trim();
 
   return s;
+}
+function stripKnownPrefixes(name: string) {
+  let n = name.trim();
+
+  // store/private-label prefixes
+  n = n.replace(/^(PUB|PUBLIX)\s+/i, "");
+
+  return n.trim();
+}
+
+function upperForChecks(line: string) {
+  return normalizeLine(line)
+    .toUpperCase()
+    .replace(/0/g, "O") // 0YSTER -> OYSTER
+    .replace(/1/g, "I"); // optional OCR fix
+}
+function stripWeirdProducePrefixes(name: string) {
+  let n = name.trim();
+
+  // If it starts with BANANA + another word AND it's not just "BANANA(S)"
+  if (/^BANANA\s+\w+/i.test(n) && !/^BANANAS?\b/i.test(n)) {
+    const produceStarters = [
+      "SHALLOTS",
+      "PEPPERS",
+      "ONIONS",
+      "TOMATOES",
+      "LIMES",
+      "CARROTS",
+    ];
+    const second = n.split(" ")[1]?.toUpperCase();
+    if (second && produceStarters.includes(second)) {
+      n = n.replace(/^BANANA\s+/i, "");
+    }
+  }
+
+  return n;
+}
+const ABBREVIATIONS: Record<string, string> = {
+  // meats
+  BNLS: "BONELESS",
+  BRST: "BREAST",
+  CHICK: "CHICKEN",
+  CHCKN: "CHICKEN",
+  GRD: "GROUND",
+  BURG: "BURGER",
+  PORK: "PORK",
+  BRGER: "BURGER",
+  BRGR: "BURGER",
+  THN: "THIN",
+  THK: "THICK",
+  SML: "SMALL",
+  NY: "NEW YORK",
+
+  // produce / pantry
+  TOM: "TOMATO",
+  TOMATO: "TOMATO",
+  TOMATOES: "TOMATOES",
+  PARM: "PARMESAN",
+  SHRD: "SHREDDED",
+  GRN: "GREEN",
+  WHEAT: "WHEAT",
+  PEPERCRN: "PEPPERCORN",
+
+  // dairy
+  VANIL: "VANILLA",
+  LT: "LIGHT",
+  FF: "FAT FREE",
+
+  // misc
+  LS: "LOW SODIUM",
+  RD: "RED",
+  FT: "FAT",
+  W: "WITH",
+  G: "GRAIN",
+};
+
+function expandAbbreviations(name: string) {
+  return name
+    .toUpperCase()
+    .split(/\s+/)
+    .map((word) => ABBREVIATIONS[word] ?? word)
+    .join(" ");
+}
+function normalizeSpacing(name: string) {
+  return name
+    .replace(/\s*\/\s*/g, "/") // TOM / PASTE → TOM/PASTE
+    .replace(/\s*-\s*/g, "-") // LOW - FAT → LOW-FAT
+    .replace(/\s+/g, " ") // collapse spaces
+    .trim();
 }
 
 function parseReceiptNamesOnly(rawText: string): ParsedItem[] {
@@ -132,32 +232,44 @@ function parseReceiptNamesOnly(rawText: string): ParsedItem[] {
 
   for (const line of lines) {
     console.log("parseReceiptNamesOnly:", line);
-    const upper = line.toUpperCase();
 
-    // ✅ STOP once totals begin (prevents the huge repeated junk tail)
+    const raw = normalizeLine(line);
+    const upperRaw = raw.toUpperCase();
+    const upper = upperForChecks(raw);
+
+    console.log(
+      "parseReceiptNamesOnly:",
+      raw,
+      upperRaw,
+      upper,
+      "_________________________________________"
+    );
+    // money-only lines like 0.00, 100.00, 6.00
+    if (/^\d+\.\d{2}$/.test(upperRaw)) continue;
+
     if (isTotalsStart(upper)) break;
 
+    // ✅ run barcode/code filters on upperRaw
+    if (/^\d{6,}[A-Z]{1,4}$/.test(upperRaw)) continue;
+    if (/^\d{8,}[A-Z0-9]*$/.test(upperRaw)) continue;
+
+    // ✅ meta/noise checks can use upper (corrected)
     if (isNoiseOrMeta(upper)) continue;
 
-    // skip pure code lines (barcodes etc)
-    if (/^\d{8,}[A-Z0-9]*$/i.test(upper)) continue;
-
-    // skip price-flag lines like "5.48 T", "1.48 X", "5.48T"
-    const compact = upper.replace(/\s+/g, "");
+    const compact = upperRaw.replace(/\s+/g, "");
     if (/^\d+\.\d{2}[A-Z0-9]$/.test(compact)) continue;
+    let name = cleanName(line);
+    name = stripKnownPrefixes(name); // PUB, PUBLIX
+    name = stripWeirdProducePrefixes(name); // BANANA SHALLOTS
+    name = expandAbbreviations(name); // BNLS → BONELESS
+    name = normalizeSpacing(name);
 
-    // keep only lines that look like item descriptions
-    if (!isMostlyLetters(upper)) continue;
-
-    const name = cleanName(line);
     if (name.length < 3) continue;
 
-    items.push({
-      id: uid(),
-      name,
-      sourceLine: line,
-      selected: true,
-    });
+    const nameUpper = name.toUpperCase().replace(/0/g, "O");
+    if (!isMostlyLetters(nameUpper)) continue;
+
+    items.push({ id: uid(), name, sourceLine: line, selected: true });
   }
 
   // De-dupe by normalized name (exact match only for now)
