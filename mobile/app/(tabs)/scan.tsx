@@ -11,6 +11,9 @@ import * as ImagePicker from "expo-image-picker";
 import { ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { extractTextFromImage } from "expo-text-extractor";
+import { router } from "expo-router";
+
 type OcrPhase =
   | "idle"
   | "preparing"
@@ -77,7 +80,7 @@ export default function ScanScreen() {
     setProgress(0);
   }
 
-  async function runFakeOcr(uri: string) {
+  async function runOnDeviceOcr(uri: string) {
     // reset state
     cancelRef.current = false;
     cleanupTimer();
@@ -85,67 +88,55 @@ export default function ScanScreen() {
     setProgress(0);
     setPhase("preparing");
 
-    // “scripted” feel: each phase has a target range of progress
-    const steps: Array<{
-      phase: OcrPhase;
-      from: number;
-      to: number;
-      ms: number;
-    }> = [
-      { phase: "preparing", from: 0.0, to: 0.12, ms: 600 },
-      { phase: "uploading", from: 0.12, to: 0.45, ms: 1200 },
-      { phase: "reading", from: 0.45, to: 0.78, ms: 1400 },
-      { phase: "parsing", from: 0.78, to: 0.97, ms: 900 },
-    ];
-
-    for (const s of steps) {
+    try {
+      // PREPARING
+      await new Promise((r) => setTimeout(r, 300));
       if (cancelRef.current) return;
-      setPhase(s.phase);
+      setProgress(0.12);
 
-      // animate progress smoothly within this phase
-      await new Promise<void>((resolve) => {
-        const start = Date.now();
-        const tickMs = 80;
+      // UPLOADING (fake — local image decode)
+      setPhase("uploading");
+      await new Promise((r) => setTimeout(r, 500));
+      if (cancelRef.current) return;
+      setProgress(0.45);
 
-        timerRef.current = setInterval(() => {
-          if (cancelRef.current) {
-            cleanupTimer();
-            resolve();
-            return;
-          }
+      // READING (real OCR happens here)
+      setPhase("reading");
+      setProgress(0.55);
 
-          const t = clamp((Date.now() - start) / s.ms, 0, 1);
-          // ease-out-ish
-          const eased = 1 - Math.pow(1 - t, 2);
-          const next = s.from + (s.to - s.from) * eased;
-
-          setProgress(next);
-
-          if (t >= 1) {
-            cleanupTimer();
-            resolve();
-          }
-        }, tickMs);
-      });
-    }
-
-    if (cancelRef.current) return;
-
-    // last tiny jump to 100%
-    setPhase("done");
-    setProgress(1);
-
-    // pretend we got OCR output
-    setTimeout(() => {
+      const lines = await extractTextFromImage(uri);
       if (cancelRef.current) return;
 
+      const rawText = lines.join("\n");
+      setProgress(0.78);
+
+      // PARSING (stub for now)
+      setPhase("parsing");
+      await new Promise((r) => setTimeout(r, 400));
+      if (cancelRef.current) return;
+      setProgress(0.97);
+
+      // DONE
+      setPhase("done");
+      setProgress(1);
       setIsRunning(false);
 
-      Alert.alert(
-        "OCR Complete (stub)",
-        "Next: map parsed items → an edit screen → add to pantry."
-      );
-    }, 350);
+      router.push({
+        pathname: "/scan/edit",
+        params: { rawText, imageUri: uri },
+      });
+
+      // NEXT STEP (soon)
+      // router.push({
+      //   pathname: "/scan/edit",
+      //   params: { rawText, imageUri: uri },
+      // });
+    } catch (e: any) {
+      setIsRunning(false);
+      setPhase("idle");
+      setProgress(0);
+      Alert.alert("OCR failed", e?.message ?? "Unknown error");
+    }
   }
 
   async function pickFromGallery() {
@@ -184,7 +175,7 @@ export default function ScanScreen() {
 
   function startOcr() {
     if (!imageUri) return;
-    runFakeOcr(imageUri);
+    runOnDeviceOcr(imageUri);
   }
 
   const pct = Math.round(progress * 100);
