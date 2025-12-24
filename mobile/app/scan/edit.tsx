@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   Alert,
   Image,
@@ -12,7 +12,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 
 import {
-  parseReceiptNamesOnly,
+  parseReceiptNamesOnlyWithReport,
   type ParsedItem,
 } from "@/features/scan/parsing";
 
@@ -23,13 +23,30 @@ export default function ScanEditScreen() {
   }>();
 
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
+  console.log("rawText", rawText);
   const imageUri = typeof params.imageUri === "string" ? params.imageUri : "";
-  const parsed = useMemo(() => parseReceiptNamesOnly(rawText), [rawText]);
-  const [items, setItems] = useState<ParsedItem[]>(parsed);
+  const { items: parsedItems, report } = useMemo(
+    () => parseReceiptNamesOnlyWithReport(rawText, false),
+    [rawText]
+  );
+
+  const [items, setItems] = useState<ParsedItem[]>(parsedItems);
 
   React.useEffect(() => {
-    setItems(parsed);
-  }, [parsed]);
+    setItems(parsedItems);
+    console.log("parsedItems", parsedItems);
+  }, [parsedItems]);
+  useEffect(() => {
+    if (!report) return;
+    if (report.quality !== "bad") return;
+
+    Alert.alert(
+      "Bad scan",
+      report.message ??
+        "This scan is hard to read. Try retaking the photo or cropping tighter."
+    );
+  }, [report?.quality]); // keep as-is
+
   const selectedCount = items.filter((i) => i.selected).length;
 
   function toggleSelected(id: string) {
@@ -65,6 +82,25 @@ export default function ScanEditScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>Review Scan</Text>
+
+      {report?.quality === "bad" && (
+        <View style={[styles.warnBanner, styles.warnBad]}>
+          <Text style={styles.warnTitle}>⚠️ Scan is hard to read</Text>
+          <Text style={styles.warnText}>
+            {report.message ??
+              "Try retaking the photo with a tighter crop and better lighting."}
+          </Text>
+        </View>
+      )}
+
+      {report?.quality === "ok" && (
+        <View style={[styles.warnBanner, styles.warnOk]}>
+          <Text style={styles.warnTitle}>ℹ️ Scan may be incomplete</Text>
+          <Text style={styles.warnText}>
+            Some items might be missing. Cropping tighter can improve accuracy.
+          </Text>
+        </View>
+      )}
 
       {imageUri ? (
         <View style={styles.previewWrap}>
@@ -234,4 +270,22 @@ const styles = StyleSheet.create({
     borderColor: "rgba(0,0,0,0.10)",
   },
   backBtnText: { color: "#111", fontSize: 15, fontWeight: "700" },
+  warnBanner: {
+    borderRadius: 14,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.10)",
+    marginBottom: 12,
+  },
+  warnTitle: { fontSize: 14, fontWeight: "800", marginBottom: 4 },
+  warnText: { fontSize: 12, color: "#555" },
+  warnBad: {
+    backgroundColor: "rgba(255, 59, 48, 0.08)",
+    borderColor: "rgba(255, 59, 48, 0.25)",
+  },
+  warnOk: {
+    backgroundColor: "rgba(255, 149, 0, 0.08)",
+    borderColor: "rgba(255, 149, 0, 0.25)",
+  },
 });
