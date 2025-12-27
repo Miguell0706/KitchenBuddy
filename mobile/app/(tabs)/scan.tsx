@@ -11,31 +11,74 @@ import * as ImagePicker from "expo-image-picker";
 import { ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { extractTextFromImage } from "expo-text-extractor";
 import { router } from "expo-router";
+import { recognizeText } from "@infinitered/react-native-mlkit-text-recognition";
 
-type OcrPhase =
-  | "idle"
-  | "preparing"
-  | "uploading"
-  | "reading"
-  | "parsing"
-  | "done";
+type OcrPhase = "idle" | "preparing" | "reading" | "parsing" | "done";
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+type OcrHealth = {
+  ok: boolean;
+  hardFail: boolean;
+  lineCount: number;
+  charCount: number;
+  letterCount: number;
+  message?: string;
+};
+
+function normalizeLines(lines: string[]) {
+  return lines.map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
+function getOcrHealthFromLines(lines: string[]): OcrHealth {
+  const joined = lines.join("\n");
+  const lineCount = lines.length;
+  const charCount = joined.length;
+  const letterCount = (joined.match(/[A-Za-z]/g) ?? []).length;
+
+  const hardFail = lineCount < 10 || letterCount < 40;
+  const ok = !hardFail && lineCount >= 18 && letterCount >= 120;
+
+  let message: string | undefined;
+
+  if (hardFail) {
+    message =
+      "We couldn’t read the receipt. Try retaking the photo closer, with better lighting, and filling the frame with just the receipt.";
+  } else if (!ok) {
+    message =
+      "OCR may be incomplete. Try cropping tighter (single receipt), better lighting, and filling the frame.";
+  }
+
+  return {
+    ok,
+    hardFail,
+    lineCount,
+    charCount,
+    letterCount,
+    message,
+  };
+}
+
+function textFromMlkitResult(result: any): string {
+  // Different versions/exposed shapes sometimes use different key names.
+  // Prefer full recognized text, fall back safely.
+  if (!result) return "";
+  if (typeof result.text === "string") return result.text;
+  if (typeof result.resultText === "string") return result.resultText;
+  if (typeof result?.text?.text === "string") return result.text.text; // extra defensive
+  return "";
 }
 
 export default function ScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
-
+  const [cropBeforeOCR, setCropBeforeOCR] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
   const [phase, setPhase] = useState<OcrPhase>("idle");
 
-  // lets us cancel safely
+  // Lets us cancel safely
   const cancelRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
@@ -43,8 +86,6 @@ export default function ScanScreen() {
     switch (phase) {
       case "preparing":
         return "Preparing image…";
-      case "uploading":
-        return "Uploading…";
       case "reading":
         return "Reading text…";
       case "parsing":
@@ -62,26 +103,43 @@ export default function ScanScreen() {
       timerRef.current = null;
     }
   }
-  function clearImage() {
-    setImageUri(null);
-    // also reset any OCR UI just in case
+  function debugPrintFirstLines(result: any) {
+    const blocks = result?.blocks ?? [];
+    const lines: any[] = [];
+
+    for (const b of blocks) {
+      for (const l of b.lines ?? []) {
+        lines.push(l);
+        if (lines.length >= 5) break;
+      }
+      if (lines.length >= 5) break;
+    }
+
+    // console.log("🔍 ML Kit first lines:");
+    // lines.forEach((l, i) => {
+    //   console.log(`#${i + 1}`, `"${l.text}"`, "frame:", l.frame);
+    // });
+  }
+
+  function resetRunState() {
+    cancelRef.current = false;
+    cleanupTimer();
     setIsRunning(false);
     setPhase("idle");
     setProgress(0);
-    cancelRef.current = false;
-    cleanupTimer();
+  }
+
+  function clearImage() {
+    setImageUri(null);
+    resetRunState();
   }
 
   function cancelOcr() {
     cancelRef.current = true;
-    cleanupTimer();
-    setIsRunning(false);
-    setPhase("idle");
-    setProgress(0);
+    resetRunState();
   }
 
   async function runOnDeviceOcr(uri: string) {
-    // reset state
     cancelRef.current = false;
     cleanupTimer();
     setIsRunning(true);
@@ -89,60 +147,73 @@ export default function ScanScreen() {
     setPhase("preparing");
 
     try {
-      // PREPARING
-      await new Promise((r) => setTimeout(r, 300));
+      // PREPARING (small UX delay only)
+      await new Promise((r) => setTimeout(r, 200));
       if (cancelRef.current) return;
-      setProgress(0.12);
-
-      // UPLOADING (fake — local image decode)
-      setPhase("uploading");
-      await new Promise((r) => setTimeout(r, 500));
-      if (cancelRef.current) return;
-      setProgress(0.45);
+      setProgress(0.15);
 
       // READING (real OCR happens here)
       setPhase("reading");
-      setProgress(0.55);
+      setProgress(0.35);
 
-      const lines = await extractTextFromImage(uri);
+      const result = await recognizeText(uri);
+      debugPrintFirstLines(result);
       if (cancelRef.current) return;
 
-      const rawText = lines.join("\n");
-      setProgress(0.78);
+      const rawText = textFromMlkitResult(result);
+      const lines = normalizeLines(rawText.split("\n"));
+      const health = getOcrHealthFromLines(lines);
 
-      // PARSING (stub for now)
+      if (health.hardFail) {
+        Alert.alert(
+          "Couldn’t read receipt",
+          `Only ${health.lineCount} lines detected.\nTry retaking the photo.`
+        );
+        resetRunState();
+        return;
+      }
+
+      if (!health.ok) {
+        Alert.alert("OCR may be incomplete", health.message);
+      }
+
+      setProgress(0.7);
+
+      // PARSING (you do parsing in /scan/edit currently)
       setPhase("parsing");
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 150));
       if (cancelRef.current) return;
-      setProgress(0.97);
+      setProgress(0.92);
 
       // DONE
       setPhase("done");
       setProgress(1);
       setIsRunning(false);
 
+      // If OCR looks incomplete, warn BEFORE navigating (but still navigate).
+      if (!health.ok) {
+        Alert.alert(
+          "OCR may be incomplete",
+          health.message ??
+            `OCR returned only ${health.lineCount} lines. Try a tighter crop and better lighting for more items.`
+        );
+      }
+
       router.push({
         pathname: "/scan/edit",
         params: { rawText, imageUri: uri },
       });
-
-      // NEXT STEP (soon)
-      // router.push({
-      //   pathname: "/scan/edit",
-      //   params: { rawText, imageUri: uri },
-      // });
     } catch (e: any) {
-      setIsRunning(false);
-      setPhase("idle");
-      setProgress(0);
+      console.error("OCR failed:", e);
+      resetRunState();
       Alert.alert("OCR failed", e?.message ?? "Unknown error");
     }
   }
 
   async function pickFromGallery() {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.9,
+      mediaTypes: ["images"],
+      quality: 1,
       allowsEditing: true,
     });
 
@@ -163,7 +234,8 @@ export default function ScanScreen() {
     }
 
     const res = await ImagePicker.launchCameraAsync({
-      quality: 0.9,
+      mediaTypes: ["images"],
+      quality: 1,
       allowsEditing: true,
     });
 
@@ -174,7 +246,7 @@ export default function ScanScreen() {
   }
 
   function startOcr() {
-    if (!imageUri) return;
+    if (!imageUri || isRunning) return;
     runOnDeviceOcr(imageUri);
   }
 
@@ -210,6 +282,13 @@ export default function ScanScreen() {
           <Text style={styles.secondaryBtnText}>Choose from Photos</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity onPress={() => setCropBeforeOCR((v) => !v)}>
+        <Text>
+          {cropBeforeOCR ? "Cropping: ON" : "Cropping: OFF (full page)"}
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[styles.removeBtn, isRunning && styles.btnDisabled]}
         activeOpacity={0.85}
@@ -235,7 +314,6 @@ export default function ScanScreen() {
         </View>
       ) : null}
 
-      {/* Loading / Progress */}
       {isRunning ? (
         <View style={styles.loadingCard}>
           <View style={styles.loadingHeader}>
@@ -298,12 +376,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: "#111", fontSize: 16, fontWeight: "600" },
   btnDisabled: { opacity: 0.55 },
-  helpText: {
-    marginTop: 12,
-    color: "#666",
-    fontSize: 13,
-    textAlign: "center",
-  },
+
   previewWrap: { marginTop: 16 },
   previewTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
   previewImage: {
@@ -323,7 +396,6 @@ const styles = StyleSheet.create({
   },
   ghostBtnText: { color: "#111", fontSize: 15, fontWeight: "600" },
 
-  // Loading card
   loadingCard: {
     marginTop: 16,
     borderRadius: 16,
@@ -351,11 +423,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#111",
   },
-  loadingSub: {
-    marginTop: 10,
-    color: "#666",
-    fontSize: 13,
-  },
   cancelBtn: {
     marginTop: 12,
     borderRadius: 14,
@@ -365,7 +432,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 59, 48, 0.18)",
   },
-  cancelBtnText: { color: "rgb(170, 20, 20)", fontSize: 15, fontWeight: "700" },
+  cancelBtnText: {
+    color: "rgb(170, 20, 20)",
+    fontSize: 15,
+    fontWeight: "700",
+  },
   removeBtn: {
     marginTop: 10,
     borderRadius: 14,

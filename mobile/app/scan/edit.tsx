@@ -23,7 +23,6 @@ export default function ScanEditScreen() {
   }>();
 
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
-  console.log("rawText", rawText);
   const imageUri = typeof params.imageUri === "string" ? params.imageUri : "";
   const { items: parsedItems, report } = useMemo(
     () => parseReceiptNamesOnlyWithReport(rawText, false),
@@ -34,7 +33,6 @@ export default function ScanEditScreen() {
 
   React.useEffect(() => {
     setItems(parsedItems);
-    console.log("parsedItems", parsedItems);
   }, [parsedItems]);
   useEffect(() => {
     if (!report) return;
