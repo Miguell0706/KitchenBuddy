@@ -1,5 +1,6 @@
 import { normalizeLines } from "./normalize";
 import { isBadLine } from "./badLine"; // ✅ add back
+import { cleanName } from "./cleanName";
 
 export type ParsedItem = {
   id: string;
@@ -62,8 +63,7 @@ export function parseReceiptNamesOnlyWithReport(
     else kept.push(line);
   }
 
-  // For now: treat each kept line as an item (stub),
-  // later you’ll replace with grouping rules.
+
   const keptDeduped = dedupeExact(kept);
 
   const items: ParsedItem[] = keptDeduped.map((line) => ({
@@ -72,6 +72,10 @@ export function parseReceiptNamesOnlyWithReport(
     sourceLine: line,
     selected: true,
   }));
+  console.log("cleaning good items===================================xxxxxxxxxxxxxx")
+  for (const item of items) {
+    item.name = cleanName(item.name);
+  }
 
   console.log("🧾 FINAL ITEMS:");
   items.forEach((item, i) => {
