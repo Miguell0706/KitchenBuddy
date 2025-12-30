@@ -21,7 +21,7 @@ export default function ScanEditScreen() {
     rawText?: string;
     imageUri?: string;
   }>();
-
+  const [aiLoading, setAiLoading] = useState(false);
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
   const imageUri = typeof params.imageUri === "string" ? params.imageUri : "";
   const { items: parsedItems, report } = useMemo(
@@ -44,6 +44,77 @@ export default function ScanEditScreen() {
         "This scan is hard to read. Try retaking the photo or cropping tighter."
     );
   }, [report?.quality]); // keep as-is
+  useEffect(() => {
+    // don’t call if nothing to process
+    if (!parsedItems || parsedItems.length === 0) return;
+
+    let cancelled = false;
+
+    async function runCanonicalize() {
+      try {
+        setAiLoading(true);
+
+        const resp = await fetch(
+          "http://192.168.0.228:8787/api/canonicalize-items",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              deviceId: "DEV_DEVICE_ID", // TODO: replace with real deviceId
+              items: parsedItems.map((i) => ({ id: i.id, text: i.name })),
+            }),
+          }
+        );
+
+        const data = await resp.json();
+        if (cancelled) return;
+
+        // build map: id -> result
+        const byId = new Map<string, any>(
+          (data.merged ?? []).map((m: any) => [m.id, m.result])
+        );
+
+        setItems(
+          (prev) =>
+            prev
+              .map((it) => {
+                const r = byId.get(it.id);
+                if (!r) return it;
+
+                // drop receipt meta/junk
+                if (r.status === "not_item") return null;
+
+                // update name + selection logic
+                const nextName =
+                  r.status === "item" && r.canonicalName?.trim()
+                    ? r.canonicalName
+                    : it.name;
+
+                const autoSelect =
+                  r.status === "item" &&
+                  r.kind === "food" &&
+                  (r.confidence ?? 0) >= 0.8;
+
+                return { ...it, name: nextName, selected: autoSelect };
+              })
+              .filter(Boolean) as ParsedItem[]
+        );
+      } catch (e) {
+        if (!cancelled) {
+          // optional: don’t alert here; just fail silently and let user edit
+          console.log("canonicalize-items failed:", e);
+        }
+      } finally {
+        if (!cancelled) setAiLoading(false);
+      }
+    }
+
+    runCanonicalize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [parsedItems]);
 
   const selectedCount = items.filter((i) => i.selected).length;
 

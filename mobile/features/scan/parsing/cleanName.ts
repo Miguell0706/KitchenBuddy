@@ -97,11 +97,17 @@ function expandAbbreviations(s: string) {
   return out;
 }
 function stripLeadingCodes(s: string) {
-  // Only strip if the first token looks like a SKU: 4+ alnum AND contains a digit
+  // Strip only if first token:
+  // - is 4+ alphanumeric
+  // - contains at least TWO digits
   // Examples stripped: "38066 Tomatoes", "470B6 Rice", "1725 Bag"
-  // Examples kept: "OREO COOKIE", "UPUP HOUSEH"
-  return s.replace(/^\s*(?=[A-Z0-9]{4,}\b)(?=[A-Z0-9]*\d)[A-Z0-9]{4,}\s+/, "");
+  // Examples kept: "OREO COOKIE", "UPUP HOUSEH", "ABCD Soup"
+  return s.replace(
+    /^\s*(?=[A-Z0-9]{4,}\b)(?=(?:[A-Z0-9]*\d){2,})[A-Z0-9]{4,}\s+/,
+    ""
+  );
 }
+
 
 
 function stripTrailingCodes(s: string) {
