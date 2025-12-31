@@ -31,12 +31,14 @@ export default function ScanEditScreen() {
     () => parseReceiptNamesOnlyWithReport(rawText, false),
     [rawText]
   );
-
+  const payloadItems = parsedItems.map((i) => ({
+    id: i.id,
+    text: i.name?.trim() || i.sourceLine?.trim() || "",
+  }));
   const [items, setItems] = useState<ParsedItem[]>(parsedItems);
 
-  React.useEffect(() => {
-    setItems(parsedItems);
-  }, [parsedItems]);
+  useEffect(() => setItems(parsedItems), [parsedItems]);
+
   useEffect(() => {
     if (!report) return;
     if (report.quality !== "bad") return;
@@ -52,13 +54,16 @@ export default function ScanEditScreen() {
     if (!parsedItems || parsedItems.length === 0) return;
 
     let cancelled = false;
+    7;
 
     async function runCanonicalize() {
-      const deviceId = await getDeviceId();
+      console.log("🚀 running canonicalize-items", payloadItems);
 
+      const deviceId = await getDeviceId();
+      console.log("🌐 CANONICALIZE_URL", CANONICALIZE_URL);
+      console.log("📦 sending items", payloadItems.length);
       try {
         setAiLoading(true);
-
         const resp = await fetchWithTimeout(
           CANONICALIZE_URL,
           {
@@ -66,17 +71,24 @@ export default function ScanEditScreen() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               deviceId,
-              items: parsedItems.map((i) => ({ id: i.id, text: i.name })),
+              items: payloadItems,
             }),
           },
-          30_000
+          60_000
         );
         if (!resp.ok) {
+          Alert.alert(
+            "AI unavailable",
+            "Couldn't improve names this time. You can edit items manually."
+          );
           throw new Error(`HTTP ${resp.status}`);
         }
         const data = await resp.json();
         if (cancelled) return;
-
+        console.log(
+          "✅ canonicalize-items response",
+          JSON.stringify(data, null, 2)
+        );
         // build map: id -> result
         const byId = new Map<string, any>(
           (data.merged ?? []).map((m: any) => [m.id, m.result])
@@ -97,11 +109,8 @@ export default function ScanEditScreen() {
                   r.status === "item" && r.canonicalName?.trim()
                     ? r.canonicalName
                     : it.name;
-
                 const autoSelect =
-                  r.status === "item" &&
-                  r.kind === "food" &&
-                  (r.confidence ?? 0) >= 0.8;
+                  r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
                 return { ...it, name: nextName, selected: autoSelect };
               })
@@ -160,6 +169,14 @@ export default function ScanEditScreen() {
     // usePantryStore.getState().bulkAddFromScan(chosen)
     // router.replace("/(tabs)/pantry");
   }
+  if (aiLoading) {
+    return (
+      <View style={styles.blockWrap}>
+        <Text style={styles.blockTitle}>✨ Improving item names…</Text>
+        <Text style={styles.blockText}>Hang tight for a moment.</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -167,7 +184,6 @@ export default function ScanEditScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>Review Scan</Text>
-
       {report?.quality === "bad" && (
         <View style={[styles.warnBanner, styles.warnBad]}>
           <Text style={styles.warnTitle}>⚠️ Scan is hard to read</Text>
@@ -177,7 +193,6 @@ export default function ScanEditScreen() {
           </Text>
         </View>
       )}
-
       {report?.quality === "ok" && (
         <View style={[styles.warnBanner, styles.warnOk]}>
           <Text style={styles.warnTitle}>ℹ️ Scan may be incomplete</Text>
@@ -186,28 +201,17 @@ export default function ScanEditScreen() {
           </Text>
         </View>
       )}
-
       {imageUri ? (
         <View style={styles.previewWrap}>
           <Image source={{ uri: imageUri }} style={styles.previewImage} />
         </View>
       ) : null}
-      {aiLoading && (
-        <View style={styles.warnBanner}>
-          <Text style={styles.warnTitle}>✨ Improving item names…</Text>
-          <Text style={styles.warnText}>
-            This can take a moment the first time.
-          </Text>
-        </View>
-      )}
-
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>Detected items</Text>
         <Text style={styles.countText}>
           {selectedCount}/{items.length} selected
         </Text>
       </View>
-
       {items.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No items detected</Text>
@@ -246,7 +250,6 @@ export default function ScanEditScreen() {
           ))}
         </View>
       )}
-
       <Pressable
         style={[styles.primaryBtn, items.length === 0 && styles.btnDisabled]}
         onPress={addSelectedToPantry}
@@ -254,7 +257,6 @@ export default function ScanEditScreen() {
       >
         <Text style={styles.primaryBtnText}>Add selected to pantry</Text>
       </Pressable>
-
       <Pressable style={styles.ghostBtn} onPress={() => router.back()}>
         <Text style={styles.ghostBtnText}>Back</Text>
       </Pressable>
@@ -270,6 +272,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 12,
   },
+  blockWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "#fdfdfc",
+  },
+  blockTitle: { fontSize: 18, fontWeight: "800", marginBottom: 8 },
+  blockText: { fontSize: 13, color: "#555", textAlign: "center" },
 
   previewWrap: {
     borderRadius: 16,

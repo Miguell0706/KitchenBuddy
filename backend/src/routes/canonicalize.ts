@@ -4,6 +4,7 @@ import { normalizeKey } from "../lib/normalizeKey.js";
 import { cacheGetMany, cacheUpsertMany } from "../lib/cache.js";
 import { enforceReceiptCaps, rateLimitDaily } from "../lib/guards.js";
 import type { CanonResult } from "../lib/types.js";
+import { geminiCanonicalize } from "../llm/geminiCanonicalize.js";
 
 export const canonicalizeRouter = express.Router();
 
@@ -80,27 +81,8 @@ canonicalizeRouter.post("/", async (req, res) => {
         console.log("✂️ cap result", { itemsSentToLLM: trimmed.length });
 
         // STUB (later replace with real LLM call)
-        newRows = trimmed.map((t) => ({
-          key: t.key,
-          canonicalName: t.text,
-          status: "unknown",
-          kind: "other",
-          ingredientType: "ambiguous",
-          confidence: 0.0,
-          updatedAt: Date.now(),
-          source: "none"
-        }));
-        // STUB (later replace with real LLM call)
-        newRows = trimmed.map((t) => ({
-          key: t.key,
-          canonicalName: t.text,
-          status: "unknown",
-          kind: "other",
-          ingredientType: "ambiguous",
-          confidence: 0.0,
-          updatedAt: Date.now(),
-          source: "none"
-        }));
+        newRows = await geminiCanonicalize(trimmed);
+
 
         // ✅ CACHE WRITE (only cache meaningful results)
         const toCache = newRows.filter(

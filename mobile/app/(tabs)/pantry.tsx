@@ -1037,7 +1037,7 @@ export default function PantryScreen() {
           }}
         >
           <Text style={[TextStyles.small, { color: "#fff", flex: 1 }]}>
-            {undo.action === "used" ? "Marked used" : "Deleted"}{" "}
+            {undo.action === "used" ? "Marked used" : "Deleted"}
             {undo.item.name}
           </Text>
 
