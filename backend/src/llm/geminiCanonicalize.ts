@@ -4,7 +4,7 @@ import type { CanonResult } from "../lib/types.js";
 
 type InputRow = { key: string; text: string };
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash-001";
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
 
 function mustEnv(name: string) {
@@ -72,42 +72,80 @@ function validate(rowsIn: InputRow[], out: any) {
     if (r.source !== "gemini") throw new Error("source must be gemini");
   }
 }
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`LLM_TIMEOUT_${ms}ms`)), ms)
+    ),
+  ]);
+}
 
 export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[]> {
   const apiKey = mustEnv("GEMINI_API_KEY");
   const client = new GoogleGenerativeAI(apiKey);
-  const model = client.getGenerativeModel({
-    model: MODEL,
-    generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
-  });
 
-  const prompt = buildPrompt(rows);
-
+  // NOTE: AbortController only helps if your SDK version supports passing signal.
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
+  const model = client.getGenerativeModel(
+    {
+      model: MODEL, // use "gemini-1.5-flash-001"
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json",
+      },
+    },
+
+  );
+
+  const prompt = buildPrompt(rows);
+
   try {
-    const resp = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
+    const resp = await withTimeout(
+      model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+      TIMEOUT_MS
+    );
 
     const raw = resp.response.text();
     const parsed = safeParseJson(raw);
     validate(rows, parsed);
 
     const now = Date.now();
-
-    // Map into your CanonResult type
     return parsed.rows.map((r: any) => ({
       key: r.key,
       canonicalName: r.canonicalName,
-      status: r.status,
-      kind: r.kind ?? "other",
-      ingredientType: r.ingredientType ?? "ambiguous",
-      confidence: r.confidence,
+      status: (r.status ?? "unknown") as CanonResult["status"],
+      kind: (r.kind ?? "other") as CanonResult["kind"],
+      ingredientType: (r.ingredientType ?? "ambiguous") as CanonResult["ingredientType"],
+      confidence: typeof r.confidence === "number" ? r.confidence : 0,
       updatedAt: now,
-      source: "gemini",
-    })) as CanonResult[];
+      source: "llm",
+    }));
+  } catch (err: any) {
+    console.error("geminiCanonicalize failed", {
+      model: MODEL,
+      status: err?.status,
+      statusText: err?.statusText,
+      message: err?.message,
+      aborted: controller.signal.aborted,
+    });
+
+    // ✅ graceful fallback that matches your CanonResult type
+    const now = Date.now();
+    return rows.map((row) => ({
+      key: row.key,
+      canonicalName: row.text,
+      status: "unknown",
+      kind: "other",
+      ingredientType: "ambiguous",
+      confidence: 0,
+      updatedAt: now,
+      source: "none",
+    }));
   } finally {
     clearTimeout(t);
   }
