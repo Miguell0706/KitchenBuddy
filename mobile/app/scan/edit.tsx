@@ -10,6 +10,9 @@ import {
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { CANONICALIZE_URL } from "@/config/api";
+import { getDeviceId } from "@/src/utils/deviceId";
+import { fetchWithTimeout } from "@/src/utils/fetchWithTimeout";
 
 import {
   parseReceiptNamesOnlyWithReport,
@@ -51,21 +54,26 @@ export default function ScanEditScreen() {
     let cancelled = false;
 
     async function runCanonicalize() {
+      const deviceId = await getDeviceId();
+
       try {
         setAiLoading(true);
 
-        const resp = await fetch(
-          "http://192.168.0.228:8787/api/canonicalize-items",
+        const resp = await fetchWithTimeout(
+          CANONICALIZE_URL,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              deviceId: "DEV_DEVICE_ID", // TODO: replace with real deviceId
+              deviceId,
               items: parsedItems.map((i) => ({ id: i.id, text: i.name })),
             }),
-          }
+          },
+          30_000
         );
-
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
         const data = await resp.json();
         if (cancelled) return;
 
@@ -99,13 +107,21 @@ export default function ScanEditScreen() {
               })
               .filter(Boolean) as ParsedItem[]
         );
-      } catch (e) {
+      } catch (e: any) {
         if (!cancelled) {
-          // optional: don’t alert here; just fail silently and let user edit
-          console.log("canonicalize-items failed:", e);
+          if (e?.name === "AbortError") {
+            Alert.alert(
+              "Waking server",
+              "Server is starting up. Try again in a moment."
+            );
+          } else {
+            console.log("canonicalize-items failed:", e);
+          }
         }
       } finally {
-        if (!cancelled) setAiLoading(false);
+        if (!cancelled) {
+          setAiLoading(false);
+        }
       }
     }
 
@@ -176,6 +192,14 @@ export default function ScanEditScreen() {
           <Image source={{ uri: imageUri }} style={styles.previewImage} />
         </View>
       ) : null}
+      {aiLoading && (
+        <View style={styles.warnBanner}>
+          <Text style={styles.warnTitle}>✨ Improving item names…</Text>
+          <Text style={styles.warnText}>
+            This can take a moment the first time.
+          </Text>
+        </View>
+      )}
 
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>Detected items</Text>
