@@ -26,12 +26,12 @@ type Out = {
     key: string;
     canonicalName: string;
     status: "item" | "not_item" | "unknown";
-    kind: "produce" | "meat" | "dairy" | "bakery" | "pantry" | "frozen" | "beverage" | "household" | "other";
-    ingredientType: "ingredient" | "brand_product" | "ambiguous";
+    kind: "food" | "household" | "other";
+    ingredientType: "ingredient" | "product" | "ambiguous";
     confidence: number; // 0..1
-    source: "gemini";
   }>;
 };
+
 
 Rules:
 - rows.length MUST equal input length.
@@ -64,14 +64,17 @@ function validate(rowsIn: InputRow[], out: any) {
   if (out.rows.length !== rowsIn.length) throw new Error("Row length mismatch");
 
   const inKeys = new Set(rowsIn.map((r) => r.key));
+
   for (const r of out.rows) {
     if (typeof r?.key !== "string" || !inKeys.has(r.key)) throw new Error(`Bad/missing key: ${r?.key}`);
     if (typeof r.canonicalName !== "string") throw new Error("canonicalName missing");
     if (!["item", "not_item", "unknown"].includes(r.status)) throw new Error("status invalid");
+    if (!["food", "household", "other"].includes(r.kind)) throw new Error("kind invalid");
+    if (!["ingredient", "product", "ambiguous"].includes(r.ingredientType)) throw new Error("ingredientType invalid");
     if (typeof r.confidence !== "number" || r.confidence < 0 || r.confidence > 1) throw new Error("confidence invalid");
-    if (r.source !== "gemini") throw new Error("source must be gemini");
   }
 }
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
@@ -81,24 +84,20 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+
 export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[]> {
   const apiKey = mustEnv("GEMINI_API_KEY");
   const client = new GoogleGenerativeAI(apiKey);
 
-  // NOTE: AbortController only helps if your SDK version supports passing signal.
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  const model = client.getGenerativeModel(
-    {
-      model: MODEL, // use "gemini-1.5-flash-001"
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-      },
+  const model = client.getGenerativeModel({
+    model: MODEL,
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: "application/json",
     },
+  });
 
-  );
 
   const prompt = buildPrompt(rows);
 
@@ -118,21 +117,18 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
     return parsed.rows.map((r: any) => ({
       key: r.key,
       canonicalName: r.canonicalName,
-      status: (r.status ?? "unknown") as CanonResult["status"],
-      kind: (r.kind ?? "other") as CanonResult["kind"],
-      ingredientType: (r.ingredientType ?? "ambiguous") as CanonResult["ingredientType"],
-      confidence: typeof r.confidence === "number" ? r.confidence : 0,
+      status: r.status,
+      kind: r.kind,
+      ingredientType: r.ingredientType,
+
+      confidence: Math.max(0, Math.min(1, Number(r.confidence ?? 0))),
       updatedAt: now,
       source: "llm",
     }));
+
   } catch (err: any) {
-    console.error("geminiCanonicalize failed", {
-      model: MODEL,
-      status: err?.status,
-      statusText: err?.statusText,
-      message: err?.message,
-      aborted: controller.signal.aborted,
-    });
+   console.error("geminiCanonicalize failed", { model: MODEL, message: err?.message, stack: err?.stack });
+
 
     // ✅ graceful fallback that matches your CanonResult type
     const now = Date.now();
@@ -146,7 +142,5 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
       updatedAt: now,
       source: "none",
     }));
-  } finally {
-    clearTimeout(t);
   }
 }
