@@ -36,6 +36,7 @@ export default function ScanEditScreen() {
     text: i.name?.trim() || i.sourceLine?.trim() || "",
   }));
   const [items, setItems] = useState<ParsedItem[]>(parsedItems);
+  const [showExcluded, setShowExcluded] = useState(false);
 
   useEffect(() => setItems(parsedItems), [parsedItems]);
 
@@ -54,7 +55,6 @@ export default function ScanEditScreen() {
     if (!parsedItems || parsedItems.length === 0) return;
 
     let cancelled = false;
-    7;
 
     async function runCanonicalize() {
       console.log("🚀 running canonicalize-items", payloadItems);
@@ -101,8 +101,7 @@ export default function ScanEditScreen() {
                 const r = byId.get(it.id);
                 if (!r) return it;
 
-                // drop receipt meta/junk
-                if (r.status === "not_item") return null;
+                const excluded = r.status === "not_item" || r.kind === "other";
 
                 // update name + selection logic
                 const nextName =
@@ -112,7 +111,12 @@ export default function ScanEditScreen() {
                 const autoSelect =
                   r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-                return { ...it, name: nextName, selected: autoSelect };
+                return {
+                  ...it,
+                  name: nextName,
+                  selected: autoSelect && !excluded,
+                  excluded,
+                };
               })
               .filter(Boolean) as ParsedItem[]
         );
@@ -206,6 +210,12 @@ export default function ScanEditScreen() {
           <Image source={{ uri: imageUri }} style={styles.previewImage} />
         </View>
       ) : null}
+      <Pressable onPress={() => setShowExcluded((v) => !v)}>
+        <Text style={{ fontSize: 12, color: "#555" }}>
+          {showExcluded ? "Hide excluded items" : "Show excluded items"}
+        </Text>
+      </Pressable>
+
       <View style={styles.headerRow}>
         <Text style={styles.sectionTitle}>Detected items</Text>
         <Text style={styles.countText}>
@@ -225,29 +235,31 @@ export default function ScanEditScreen() {
         </View>
       ) : (
         <View style={styles.listCard}>
-          {items.map((it) => (
-            <Pressable
-              key={it.id}
-              onPress={() => toggleSelected(it.id)}
-              style={[styles.row, !it.selected && styles.rowOff]}
-            >
-              <View style={styles.rowTop}>
-                <Text style={styles.checkbox}>{it.selected ? "☑" : "☐"}</Text>
-                <Text style={styles.sourceLine} numberOfLines={1}>
-                  {it.sourceLine}
-                </Text>
-              </View>
+          {items
+            .filter((i) => showExcluded || !i.excluded)
+            .map((it) => (
+              <Pressable
+                key={it.id}
+                onPress={() => toggleSelected(it.id)}
+                style={[styles.row, !it.selected && styles.rowOff]}
+              >
+                <View style={styles.rowTop}>
+                  <Text style={styles.checkbox}>{it.selected ? "☑" : "☐"}</Text>
+                  <Text style={styles.sourceLine} numberOfLines={1}>
+                    {it.sourceLine}
+                  </Text>
+                </View>
 
-              <View style={styles.editRow}>
-                <TextInput
-                  value={it.name}
-                  onChangeText={(t) => updateName(it.id, t)}
-                  placeholder="Item name"
-                  style={styles.nameInput}
-                />
-              </View>
-            </Pressable>
-          ))}
+                <View style={styles.editRow}>
+                  <TextInput
+                    value={it.name}
+                    onChangeText={(t) => updateName(it.id, t)}
+                    placeholder="Item name"
+                    style={styles.nameInput}
+                  />
+                </View>
+              </Pressable>
+            ))}
         </View>
       )}
       <Pressable

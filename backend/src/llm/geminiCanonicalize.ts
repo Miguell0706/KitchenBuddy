@@ -5,7 +5,7 @@ import type { CanonResult } from "../lib/types.js";
 type InputRow = { key: string; text: string };
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
+const TIMEOUT_MS = Math.min(60_000);
 
 function mustEnv(name: string) {
   const v = process.env[name];

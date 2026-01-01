@@ -7,6 +7,7 @@ export type ParsedItem = {
   name: string;
   sourceLine: string;
   selected: boolean;
+  excluded?: boolean;
 };
 
 export type ParseQuality = "good" | "ok" | "bad";
