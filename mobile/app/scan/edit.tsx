@@ -94,31 +94,28 @@ export default function ScanEditScreen() {
           (data.merged ?? []).map((m: any) => [m.id, m.result])
         );
 
-        setItems(
-          (prev) =>
-            prev
-              .map((it) => {
-                const r = byId.get(it.id);
-                if (!r) return it;
+        setItems((prev) =>
+          prev.map((it) => {
+            const r = byId.get(it.id);
+            if (!r) return it;
 
-                const excluded = r.status === "not_item" || r.kind === "other";
+            const excluded = r.status === "not_item" || r.kind === "other";
 
-                // update name + selection logic
-                const nextName =
-                  r.status === "item" && r.canonicalName?.trim()
-                    ? r.canonicalName
-                    : it.name;
-                const autoSelect =
-                  r.status === "item" && (r.confidence ?? 0) >= 0.8;
+            // update name + selection logic
+            const nextName =
+              r.status === "item" && r.canonicalName?.trim()
+                ? r.canonicalName
+                : it.name;
+            const autoSelect =
+              r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-                return {
-                  ...it,
-                  name: nextName,
-                  selected: autoSelect && !excluded,
-                  excluded,
-                };
-              })
-              .filter(Boolean) as ParsedItem[]
+            return {
+              ...it,
+              name: nextName,
+              selected: autoSelect && !excluded,
+              excluded,
+            };
+          })
         );
       } catch (e: any) {
         if (!cancelled) {

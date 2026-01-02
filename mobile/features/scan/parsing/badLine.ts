@@ -202,9 +202,14 @@ export function isBadLine(line: string): boolean {
   if (upper.includes("CARTWHEEL")) return true;
   if (upper.includes("MFRCPN") || upper.includes("MFR CPN")) return true;
   if (upper.includes("SAVED") && (upper.includes("OFF") || upper.includes("$"))) return true;
-  // coupon/discount math lines
-  if (upper.includes(" OFF ") && (upper.includes("%") || /[$€]\s*\d/.test(upper))) return true;
+// If there's a percent sign, it's almost never an item line.
+  if (upper.includes("%")) return true;
 
+  // common OCR variants for "OFF" / "DISCOUNT"
+  if (/\b(OFF|0FF|DFF|0Ff|OFT|DISCOUNT|DISC|SAVE|SAVINGS|COUPON|CPN|MFRCPN|DEAL|PROMO)\b/.test(upper)) {
+    // if it also mentions a money/percent, it's definitely promo/meta
+    if (/%/.test(upper) || /[$€]\s*\d|\b\d+\.\d{2}\b/.test(upper)) return true;
+  }
     // promo / header phrases
   if (upper.includes("SEE BACK") || upper.includes("CHANCE")) return true;
   if (upper.includes("WIN $") || upper.includes("WIN$")) return true;
