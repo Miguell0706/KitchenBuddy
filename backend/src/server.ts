@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { canonicalizeRouter } from "./routes/canonicalize.js";
-import { pool } from "./db";
+import { pool } from "./db.js";
 
 pool.query("select 1 as ok").then(
   (r) => console.log("✅ DB connected:", r.rows[0]),
