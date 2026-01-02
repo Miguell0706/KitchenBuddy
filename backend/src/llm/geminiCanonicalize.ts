@@ -45,7 +45,7 @@ function isDefinitelyNonGrocery(text: string): boolean {
 
 function buildPrompt(rows: InputRow[]) {
   return `
-You are a grocery receipt item canonicalizer for a pantry/kitchen app.
+You are a receipt line-item canonicalizer for a pantry/kitchen app.
 
 Return ONLY valid JSON. No markdown, no backticks, no extra text.
 
@@ -62,26 +62,45 @@ type Out = {
   }>;
 };
 
-Definition of status:
-- status="item" ONLY if pantry-relevant:
-  - FOOD (anything edible: produce, meat, dairy, pantry staples, snacks, frozen foods, drinks)
-  - HOUSEHOLD consumables used around food/home (paper towels, soap, detergent, trash bags, foil, etc.)
-- If it is NOT pantry-relevant (e.g., rucksack/backpack, notebook, office supplies, apparel, toys, electronics) => status="not_item" and kind="other".
-- Totals/payment/coupons/surveys/store meta => status="not_item".
+Goal:
+- Identify which lines are actual purchasable items vs non-item noise.
+- Canonicalize item names into clean, human-friendly names.
 
-ingredientType rules:
-- ingredientType="ingredient" for raw ingredients / staples:
-  - produce (bananas, apples, onions), raw meat cuts, eggs, milk, flour, rice, beans, spices.
-- ingredientType="product" for packaged/prepared items:
-  - cookies, donut holes, breadsticks, frozen potato wedges, branded snacks.
+status rules (IMPORTANT):
+- status="item" if the line refers to a purchasable product (food OR household/personal care OR general merchandise).
+  Examples: soy sauce, milk, bananas, paper towels, detergent, shampoo, lotion, vitamins, batteries, notebook.
+- status="not_item" if it is NOT a product name:
+  prices, weights/unit prices, totals, taxes, discounts, coupons, loyalty lines, tender/payment, change, store address/phone, cashier, survey, barcodes/long numeric codes.
+- status="unknown" only if you truly cannot tell whether it is a product name or noise.
+
+kind rules (only meaningful when status="item"):
+- kind="food" for edible/drinkable items.
+- kind="household" for household + personal care + cleaning + paper goods + OTC meds/supplements.
+- kind="other" for general merchandise (electronics, apparel, toys, tools, stationery, etc.).
+If status!="item", set kind="other".
+
+ingredientType rules (only meaningful when status="item" AND kind="food"):
+- ingredientType="ingredient" for raw ingredients/staples (produce, raw meats, eggs, milk, flour, rice, beans, spices).
+- ingredientType="product" for packaged/prepared foods (snacks, frozen meals, bread, branded items).
 - ingredientType="ambiguous" only if truly unclear.
+If status!="item" OR kind!="food", set ingredientType="product" (or "ambiguous" if you prefer, but be consistent).
 
 canonicalName rules:
-- Title Case, cleaned, human-friendly.
+- If status="item": Title Case, cleaned, human-friendly. Expand common abbreviations when obvious (e.g., "GV" -> omit brand, "HB" -> "Hand & Body" if context supports).
+- If status="not_item": canonicalName MUST be "".
 - Remove store prefixes/promo tokens/prices/weights ("PUB", "PUBLIX", "2 FOR", "$", "LB", etc.).
 - Preserve each "key" EXACTLY as provided.
 - rows.length MUST equal input length.
 - Do not add extra fields.
+
+confidence rules:
+- Use a real scale:
+  0.95-1.0 = obvious
+  0.70-0.94 = likely but abbreviated/noisy
+  0.40-0.69 = uncertain
+  0.10-0.39 = very unsure
+  0.00-0.09 = basically guess
+- Avoid returning 1.0 unless it is extremely clear.
 
 Input rows JSON:
 ${JSON.stringify(rows, null, 2)}

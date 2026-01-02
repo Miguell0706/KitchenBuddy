@@ -13,6 +13,8 @@ export async function initCanonCache() {
       updated_at timestamptz not null default now(),
       hits bigint not null default 0
     );
+    create index if not exists canon_cache_hits_idx
+      on canon_cache (hits desc);
 
     create index if not exists canon_cache_updated_at_idx
       on canon_cache (updated_at desc);
