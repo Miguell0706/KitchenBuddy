@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,16 +8,37 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Modal } from "react-native"; // add to imports at top
 import { router, useLocalSearchParams } from "expo-router";
 import { CANONICALIZE_URL } from "@/config/api";
 import { getDeviceId } from "@/src/utils/deviceId";
 import { fetchWithTimeout } from "@/src/utils/fetchWithTimeout";
-
+import {
+  CATEGORIES,
+  CATEGORY_DEFAULT_EXPIRY,
+} from "@/features/pantry/constants";
+import { inferCategoryFromName } from "@/features/pantry/categoryInference";
+import type { CategoryKey } from "@/features/pantry/types";
 import {
   parseReceiptNamesOnlyWithReport,
   type ParsedItem,
 } from "@/features/scan/parsing";
+type DraftScanItem = ParsedItem & {
+  categoryKey?: CategoryKey;
+  expiryDate?: string | null; // YYYY-MM-DD
+};
 
+function isoDateDaysFromNow(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultExpiryForCategory(categoryKey: CategoryKey): string | null {
+  const rule = CATEGORY_DEFAULT_EXPIRY[categoryKey];
+  if (rule === "none") return null;
+  return isoDateDaysFromNow(rule);
+}
 export default function ScanEditScreen() {
   const params = useLocalSearchParams<{
     rawText?: string;
@@ -35,10 +55,39 @@ export default function ScanEditScreen() {
     id: i.id,
     text: i.name?.trim() || i.sourceLine?.trim() || "",
   }));
-  const [items, setItems] = useState<ParsedItem[]>(parsedItems);
+  const [items, setItems] = useState<DraftScanItem[]>(parsedItems);
   const [showExcluded, setShowExcluded] = useState(false);
+  const [expiryPickerForId, setExpiryPickerForId] = useState<string | null>(
+    null
+  );
 
-  useEffect(() => setItems(parsedItems), [parsedItems]);
+  const [categoryPickerForId, setCategoryPickerForId] = useState<string | null>(
+    null
+  );
+  const [customDaysText, setCustomDaysText] = useState("");
+
+  const categoryLabel = React.useCallback((key?: CategoryKey) => {
+    return (
+      CATEGORIES.find((c) => c.key === (key ?? "pantry"))?.label ??
+      "Pantry (Dry Goods)"
+    );
+  }, []);
+
+  useEffect(() => {
+    setItems(
+      parsedItems.map((it) => {
+        const baseName = it.name ?? it.sourceLine ?? "";
+        const categoryKey = inferCategoryFromName(baseName);
+        const expiryDate = defaultExpiryForCategory(categoryKey);
+
+        return {
+          ...it,
+          categoryKey,
+          expiryDate,
+        };
+      })
+    );
+  }, [parsedItems]);
 
   useEffect(() => {
     if (!report) return;
@@ -109,10 +158,17 @@ export default function ScanEditScreen() {
             const autoSelect =
               r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
+            const nextCategory =
+              it.categoryKey ?? inferCategoryFromName(nextName ?? "");
+            const nextExpiry =
+              it.expiryDate ?? defaultExpiryForCategory(nextCategory);
+
             return {
               ...it,
               name: nextName,
-              selected: autoSelect && !excluded,
+              categoryKey: nextCategory,
+              expiryDate: nextExpiry,
+              selected: excluded ? false : autoSelect || it.selected,
               excluded,
             };
           })
@@ -151,7 +207,62 @@ export default function ScanEditScreen() {
   }
 
   function updateName(id: string, name: string) {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, name } : it)));
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+
+        const nextCategory = it.categoryKey ?? inferCategoryFromName(name);
+        const nextExpiry =
+          it.expiryDate ?? defaultExpiryForCategory(nextCategory);
+
+        return {
+          ...it,
+          name,
+          categoryKey: nextCategory,
+          expiryDate: nextExpiry,
+        };
+      })
+    );
+  }
+  function openExpiryPicker(id: string) {
+    setExpiryPickerForId(id);
+    setCustomDaysText("");
+  }
+
+  function closeExpiryPicker() {
+    setExpiryPickerForId(null);
+    setCustomDaysText("");
+  }
+
+  function updateCategory(id: string, categoryKey: CategoryKey) {
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === id
+          ? {
+              ...it,
+              categoryKey,
+              // when category changes, reset expiry to that category default
+              expiryDate: defaultExpiryForCategory(categoryKey),
+            }
+          : it
+      )
+    );
+  }
+  function parsePositiveInt(s: string): number | null {
+    const cleaned = s.trim();
+    if (!cleaned) return null;
+    if (!/^\d+$/.test(cleaned)) return null; // ✅ digits only
+
+    const int = Number(cleaned);
+    if (!Number.isFinite(int)) return null;
+    if (int <= 0) return null; // allow 0? change to < 0
+    return int;
+  }
+
+  function updateExpiry(id: string, expiryDate: string | null) {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, expiryDate } : it))
+    );
   }
 
   function addSelectedToPantry() {
@@ -178,6 +289,42 @@ export default function ScanEditScreen() {
       </View>
     );
   }
+  function daysLeftFromIso(iso: string) {
+    // interpret as local midnight to avoid timezone weirdness
+    const target = new Date(`${iso}T00:00:00`);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffMs = target.getTime() - today.getTime();
+    return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  }
+
+  function expiryDisplay(expiryDate?: string | null) {
+    if (!expiryDate) return "None";
+    const days = daysLeftFromIso(expiryDate);
+    if (days < 0) return "Expired";
+    if (days === 0) return "Today";
+    if (days === 1) return "1 day";
+    return `${days} days`;
+  }
+
+  function openCategoryPicker(id: string) {
+    setCategoryPickerForId(id);
+  }
+  function closeCategoryPicker() {
+    setCategoryPickerForId(null);
+  }
+  type ExpiryOption =
+    | { label: string; kind: "none" }
+    | { label: string; kind: "default" }
+    | { label: string; kind: "days"; days: number };
+
+  const EXPIRY_OPTIONS: ExpiryOption[] = [
+    { label: "No expiration", kind: "none" },
+    { label: "Default for category", kind: "default" },
+    { label: "3 days", kind: "days", days: 3 },
+    { label: "7 days", kind: "days", days: 7 },
+    { label: "14 days", kind: "days", days: 14 },
+  ];
 
   return (
     <ScrollView
@@ -202,11 +349,6 @@ export default function ScanEditScreen() {
           </Text>
         </View>
       )}
-      {imageUri ? (
-        <View style={styles.previewWrap}>
-          <Image source={{ uri: imageUri }} style={styles.previewImage} />
-        </View>
-      ) : null}
       <Pressable onPress={() => setShowExcluded((v) => !v)}>
         <Text style={{ fontSize: 12, color: "#555" }}>
           {showExcluded ? "Hide excluded items" : "Show excluded items"}
@@ -235,27 +377,48 @@ export default function ScanEditScreen() {
           {items
             .filter((i) => showExcluded || !i.excluded)
             .map((it) => (
-              <Pressable
+              <View
                 key={it.id}
-                onPress={() => toggleSelected(it.id)}
                 style={[styles.row, !it.selected && styles.rowOff]}
               >
-                <View style={styles.rowTop}>
-                  <Text style={styles.checkbox}>{it.selected ? "☑" : "☐"}</Text>
-                  <Text style={styles.sourceLine} numberOfLines={1}>
-                    {it.sourceLine}
-                  </Text>
-                </View>
-
                 <View style={styles.editRow}>
+                  {/* Only THIS area toggles selection */}
+                  <Pressable
+                    onPress={() => toggleSelected(it.id)}
+                    style={styles.rowTop}
+                  >
+                    <Text style={styles.checkbox}>
+                      {it.selected ? "☑" : "☐"}
+                    </Text>
+                  </Pressable>
                   <TextInput
-                    value={it.name}
+                    value={it.name ?? ""}
                     onChangeText={(t) => updateName(it.id, t)}
                     placeholder="Item name"
                     style={styles.nameInput}
                   />
                 </View>
-              </Pressable>
+
+                <View style={styles.metaRow}>
+                  <Pressable
+                    style={styles.metaPill}
+                    onPress={() => openCategoryPicker(it.id)}
+                  >
+                    <Text style={styles.metaText}>
+                      {categoryLabel(it.categoryKey)}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.metaPill}
+                    onPress={() => openExpiryPicker(it.id)}
+                  >
+                    <Text style={styles.metaText}>
+                      Expiry: {expiryDisplay(it.expiryDate)}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             ))}
         </View>
       )}
@@ -269,6 +432,134 @@ export default function ScanEditScreen() {
       <Pressable style={styles.ghostBtn} onPress={() => router.back()}>
         <Text style={styles.ghostBtnText}>Back</Text>
       </Pressable>
+
+      <Modal
+        visible={categoryPickerForId !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeCategoryPicker}
+      >
+        {/* Backdrop */}
+        <Pressable style={styles.backdrop} onPress={closeCategoryPicker} />
+
+        {/* Sheet */}
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Choose category</Text>
+
+          <ScrollView
+            style={{ maxHeight: 420 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {CATEGORIES.map((c) => (
+              <Pressable
+                key={c.key}
+                style={styles.sheetItem}
+                onPress={() => {
+                  if (!categoryPickerForId) return;
+                  updateCategory(categoryPickerForId, c.key);
+                  closeCategoryPicker();
+                }}
+              >
+                <Text style={styles.sheetItemText}>{c.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <Pressable style={styles.sheetCancel} onPress={closeCategoryPicker}>
+            <Text style={styles.sheetCancelText}>Cancel</Text>
+          </Pressable>
+        </View>
+      </Modal>
+      <Modal
+        visible={expiryPickerForId !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeExpiryPicker}
+      >
+        {/* Backdrop */}
+        <Pressable style={styles.backdrop} onPress={closeExpiryPicker} />
+
+        {/* Sheet */}
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>Set expiration</Text>
+
+          <ScrollView
+            style={{ maxHeight: 420 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ✅ Inline custom days row */}
+            <View style={styles.inlineCustomRow}>
+              <Text style={styles.inlineLabel}>Custom days</Text>
+
+              <TextInput
+                value={customDaysText}
+                onChangeText={(t) => setCustomDaysText(t.replace(/[^\d]/g, ""))}
+                placeholder="e.g. 10"
+                keyboardType="number-pad"
+                returnKeyType="done"
+                style={styles.inlineInput}
+                onSubmitEditing={() => {
+                  if (!expiryPickerForId) return;
+
+                  const days = parsePositiveInt(customDaysText);
+                  if (!days) {
+                    Alert.alert("Enter days", "Type a number like 3, 7, 14…");
+                    return;
+                  }
+                  updateExpiry(expiryPickerForId, isoDateDaysFromNow(days));
+                  closeExpiryPicker();
+                }}
+              />
+
+              <Pressable
+                style={[
+                  styles.inlineSetBtn,
+                  customDaysText.trim().length === 0 && { opacity: 0.5 },
+                ]}
+                disabled={customDaysText.trim().length === 0}
+                onPress={() => {
+                  if (!expiryPickerForId) return;
+
+                  const days = parsePositiveInt(customDaysText);
+                  if (!days) {
+                    Alert.alert("Enter days", "Type a number like 3, 7, 14…");
+                    return;
+                  }
+
+                  updateExpiry(expiryPickerForId, isoDateDaysFromNow(days));
+                  closeExpiryPicker();
+                }}
+              >
+                <Text style={styles.inlineSetBtnText}>Set</Text>
+              </Pressable>
+            </View>
+            {EXPIRY_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.label}
+                style={styles.sheetItem}
+                onPress={() => {
+                  if (!expiryPickerForId) return;
+
+                  const days = parsePositiveInt(customDaysText);
+                  if (!days) {
+                    Alert.alert("Enter days", "Type a number like 3, 7, 14…");
+                    return;
+                  }
+
+                  updateExpiry(expiryPickerForId, isoDateDaysFromNow(days));
+                  closeExpiryPicker();
+                }}
+              >
+                <Text style={styles.sheetItemText}>{opt.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <Pressable style={styles.sheetCancel} onPress={closeExpiryPicker}>
+            <Text style={styles.sheetCancelText}>Cancel</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -290,21 +581,6 @@ const styles = StyleSheet.create({
   },
   blockTitle: { fontSize: 18, fontWeight: "800", marginBottom: 8 },
   blockText: { fontSize: 13, color: "#555", textAlign: "center" },
-
-  previewWrap: {
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.08)",
-    backgroundColor: "#fff",
-    marginBottom: 14,
-  },
-  previewImage: {
-    width: "100%",
-    height: 220,
-    backgroundColor: "rgba(0,0,0,0.05)",
-  },
-
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -328,11 +604,16 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(0,0,0,0.06)",
   },
   rowOff: { opacity: 0.45 },
-  rowTop: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    paddingVertical: 4,
+  },
   checkbox: { width: 28, fontSize: 16, fontWeight: "800" },
   sourceLine: { flex: 1, color: "#555", fontSize: 12 },
 
-  editRow: { flexDirection: "row" },
+  editRow: { flexDirection: "row", alignItems: "center", flex: 1, gap: 8 },
   nameInput: {
     flex: 1,
     borderWidth: 1,
@@ -400,5 +681,105 @@ const styles = StyleSheet.create({
   warnOk: {
     backgroundColor: "rgba(255, 149, 0, 0.08)",
     borderColor: "rgba(255, 149, 0, 0.25)",
+  },
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  metaText: { fontSize: 12, fontWeight: "700", color: "#444" },
+  metaPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.10)",
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  sheet: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  sheetItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    marginBottom: 10,
+    backgroundColor: "rgba(0,0,0,0.03)",
+  },
+  sheetItemText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111",
+  },
+  sheetCancel: {
+    marginTop: 6,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.10)",
+  },
+  sheetCancelText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  inlineCustomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.06)",
+    marginBottom: 10,
+    backgroundColor: "rgba(0,0,0,0.03)",
+  },
+  inlineLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#111",
+  },
+  inlineInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.10)",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    backgroundColor: "#fff",
+  },
+  inlineSetBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "#111",
+  },
+  inlineSetBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "800",
   },
 });
