@@ -13,6 +13,34 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+if (__DEV__) {
+  (globalThis as any).pantryDebug = {
+    async get() {
+      const v = await AsyncStorage.getItem("pantry_items_v1");
+      console.log("pantry_items_v1:", v);
+      return v;
+    },
+    async keys() {
+      const k = await AsyncStorage.getAllKeys();
+      console.log("AsyncStorage keys:", k);
+      return k;
+    },
+    async clear() {
+      await AsyncStorage.removeItem("pantry_items_v1");
+      console.log("pantry_items_v1 removed");
+    },
+    async clearAll() {
+      const AsyncStorage = (
+        await import("@react-native-async-storage/async-storage")
+      ).default;
+
+      await AsyncStorage.clear();
+      console.log("🔥 AsyncStorage fully cleared");
+    },
+  };
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();

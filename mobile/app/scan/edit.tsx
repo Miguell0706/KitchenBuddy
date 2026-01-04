@@ -18,7 +18,9 @@ import {
   CATEGORY_DEFAULT_EXPIRY,
 } from "@/features/pantry/constants";
 import { inferCategoryFromName } from "@/features/pantry/categoryInference";
-import type { CategoryKey } from "@/features/pantry/types";
+import type { CategoryKey, PantryItem } from "@/features/pantry/types";
+import { addPantryItems } from "@/features/pantry/storage";
+
 import {
   parseReceiptNamesOnlyWithReport,
   type ParsedItem,
@@ -34,6 +36,25 @@ function isoDateDaysFromNow(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
+function daysUntil(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0;
+  const today = new Date();
+  const target = new Date(dateStr + "T00:00:00");
+  const ms = target.getTime() - today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+function toPantryItems(drafts: DraftScanItem[]): PantryItem[] {
+  return drafts.map((d) => ({
+    id: d.id,
+    name: (d.name ?? d.sourceLine ?? "").trim(),
+    quantity: "1",
+    expiresInDays: daysUntil(d.expiryDate),
+    expiryDate: d.expiryDate ?? null,
+    categoryKey: d.categoryKey ?? "pantry",
+  }));
+}
+
 function defaultExpiryForCategory(categoryKey: CategoryKey): string | null {
   const rule = CATEGORY_DEFAULT_EXPIRY[categoryKey];
   if (rule === "none") return null;
@@ -42,11 +63,9 @@ function defaultExpiryForCategory(categoryKey: CategoryKey): string | null {
 export default function ScanEditScreen() {
   const params = useLocalSearchParams<{
     rawText?: string;
-    imageUri?: string;
   }>();
   const [aiLoading, setAiLoading] = useState(false);
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
-  const imageUri = typeof params.imageUri === "string" ? params.imageUri : "";
   const { items: parsedItems, report } = useMemo(
     () => parseReceiptNamesOnlyWithReport(rawText, false),
     [rawText]
@@ -104,7 +123,6 @@ export default function ScanEditScreen() {
     if (!parsedItems || parsedItems.length === 0) return;
 
     let cancelled = false;
-
     async function runCanonicalize() {
       console.log("🚀 running canonicalize-items", payloadItems);
 
@@ -265,22 +283,26 @@ export default function ScanEditScreen() {
     );
   }
 
-  function addSelectedToPantry() {
-    const chosen = items.filter((i) => i.selected && i.name.trim().length > 0);
+  async function addSelectedToPantry() {
+    const chosen = items.filter(
+      (i) => i.selected && (i.name ?? "").trim().length > 0
+    );
     if (chosen.length === 0) {
       Alert.alert("Nothing selected", "Select at least one item to add.");
       return;
     }
 
-    Alert.alert(
-      "Ready to add",
-      `Selected ${chosen.length} item(s).\nNext: map → pantry store.`
-    );
+    try {
+      const newPantryItems = toPantryItems(chosen); // ✅ only chosen
+      await addPantryItems(newPantryItems); // ✅ writes to AsyncStorage
 
-    // later:
-    // usePantryStore.getState().bulkAddFromScan(chosen)
-    // router.replace("/(tabs)/pantry");
+      router.replace("/(tabs)/pantry");
+    } catch (e) {
+      console.log("addSelectedToPantry failed:", e);
+      Alert.alert("Save failed", "Couldn't save pantry items. Try again.");
+    }
   }
+
   if (aiLoading) {
     return (
       <View style={styles.blockWrap}>
@@ -429,6 +451,7 @@ export default function ScanEditScreen() {
       >
         <Text style={styles.primaryBtnText}>Add selected to pantry</Text>
       </Pressable>
+
       <Pressable style={styles.ghostBtn} onPress={() => router.back()}>
         <Text style={styles.ghostBtnText}>Back</Text>
       </Pressable>
@@ -540,14 +563,32 @@ export default function ScanEditScreen() {
                 onPress={() => {
                   if (!expiryPickerForId) return;
 
-                  const days = parsePositiveInt(customDaysText);
-                  if (!days) {
-                    Alert.alert("Enter days", "Type a number like 3, 7, 14…");
+                  const item = items.find((x) => x.id === expiryPickerForId);
+                  const cat = item?.categoryKey ?? "pantry";
+
+                  if (opt.kind === "none") {
+                    updateExpiry(expiryPickerForId, null);
+                    closeExpiryPicker();
                     return;
                   }
 
-                  updateExpiry(expiryPickerForId, isoDateDaysFromNow(days));
-                  closeExpiryPicker();
+                  if (opt.kind === "default") {
+                    updateExpiry(
+                      expiryPickerForId,
+                      defaultExpiryForCategory(cat)
+                    );
+                    closeExpiryPicker();
+                    return;
+                  }
+
+                  if (opt.kind === "days") {
+                    updateExpiry(
+                      expiryPickerForId,
+                      isoDateDaysFromNow(opt.days)
+                    );
+                    closeExpiryPicker();
+                    return;
+                  }
                 }}
               >
                 <Text style={styles.sheetItemText}>{opt.label}</Text>

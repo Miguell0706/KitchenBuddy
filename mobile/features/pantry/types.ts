@@ -3,6 +3,8 @@ export type PantryItem = {
   name: string;
   quantity: string;
   expiresInDays: number;
+  categoryKey: CategoryKey;
+  expiryDate: string | null;
 };
 
 export type CategoryKey =
