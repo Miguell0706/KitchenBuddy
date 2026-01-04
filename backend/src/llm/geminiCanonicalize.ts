@@ -144,7 +144,7 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
     if (isDefinitelyNonGrocery(row.text)) {
       pre.push({
         key: row.key,
-        canonicalName: row.text,
+        canonicalName: "",        // ✅
         status: "not_item",
         kind: "other",
         ingredientType: "ambiguous",

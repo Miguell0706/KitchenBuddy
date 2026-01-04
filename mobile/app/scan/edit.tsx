@@ -166,7 +166,10 @@ export default function ScanEditScreen() {
             const r = byId.get(it.id);
             if (!r) return it;
 
-            const excluded = r.status === "not_item" || r.kind === "other";
+            const excluded =
+              r.status === "not_item" ||
+              r.kind === "other" ||
+              r.kind === "household";
 
             // update name + selection logic
             const nextName =
@@ -174,7 +177,7 @@ export default function ScanEditScreen() {
                 ? r.canonicalName
                 : it.name;
             const autoSelect =
-              r.status === "item" && (r.confidence ?? 0) >= 0.8;
+              !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
             const nextCategory =
               it.categoryKey ?? inferCategoryFromName(nextName ?? "");

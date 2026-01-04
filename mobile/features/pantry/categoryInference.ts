@@ -5,6 +5,49 @@ import type { CategoryKey } from "./types";
  * First match wins.
  * Keep this file data-driven and dumb.
  */
+const IGNORE_EXACT = new Set([
+  "meat",
+  "produce",
+  "dairy",
+  "bakery",
+  "seafood",
+]);
+
+const IGNORE_CONTAINS: readonly string[] = [
+  "memphis",
+  "tennessee",
+  "store",
+  "manager",
+  "receipt",
+  "subtotal",
+  "total",
+  "balance due",
+  "change",
+  "survey",
+];
+
+const BRAND_ONLY: readonly string[] = [
+  "starbucks",
+  "pillsbury",
+  "silk",
+  "nasoya",
+  // add more as you encounter them
+];
+
+function isProbablyNotAnItem(nSpaced: string) {
+  if (IGNORE_EXACT.has(nSpaced)) return true;
+
+  // “brand-only” heuristic: single token that matches known brands
+  if (!nSpaced.includes(" ")) {
+    if (BRAND_ONLY.includes(nSpaced)) return true;
+  }
+
+  for (const bad of IGNORE_CONTAINS) {
+    if (nSpaced.includes(bad)) return true;
+  }
+  return false;
+}
+
 export const CATEGORY_RULES: ReadonlyArray<{
   category: CategoryKey;
   keywords: readonly string[];
@@ -31,7 +74,7 @@ export const CATEGORY_RULES: ReadonlyArray<{
       "avocado", "eggplant",
       "potato", "sweet potato", "yam",
       "mushroom", "portobello", "shiitake",
-      "corn", "green bean", "snap pea",
+      "corn", "green bean", "snap pea",'salad','salads'
     ],
   },
 
@@ -44,7 +87,9 @@ export const CATEGORY_RULES: ReadonlyArray<{
       "pork", "pork chop", "ham", "bacon",
       "sausage", "bratwurst",
       "turkey", "ground turkey",
-      "lamb", "veal",
+      "lamb", "veal","bbq chunks",
+      "chunks","tenders","nuggets","wings",
+      "chicken","pork","beef",
 
       // seafood
       "fish", "salmon", "tuna", "cod", "tilapia",
@@ -64,7 +109,7 @@ export const CATEGORY_RULES: ReadonlyArray<{
       "cream", "heavy cream", "half and half",
       "yogurt", "greek yogurt",
       "egg", "eggs", "egg whites",
-      "sour cream", "cream cheese",
+      "sour cream", "cream cheese","silk oat", "silk almond", "silk soy",
     ],
   },
 
@@ -87,7 +132,7 @@ export const CATEGORY_RULES: ReadonlyArray<{
     category: "condiments",
     keywords: [
       "ketchup", "mustard", "mayo", "mayonnaise",
-      "sauce", "soy sauce", "teriyaki",
+      "soy sauce", "teriyaki",
       "hot sauce", "sriracha",
       "bbq", "barbecue",
       "dressing", "ranch", "vinaigrette",
@@ -106,7 +151,7 @@ export const CATEGORY_RULES: ReadonlyArray<{
       "oregano", "basil", "thyme", "rosemary",
       "cinnamon", "nutmeg",
       "chili powder", "garlic powder", "onion powder",
-      "spice", "seasoning", "rub",
+       "seasoning", "rub",
     ],
   },
 
@@ -205,6 +250,8 @@ function keywordForms(keyword: string) {
 }
 export function inferCategoryFromName(name: string): CategoryKey {
   const { spaced: nSpaced, compact: nCompact } = normalizeForMatch(name);
+  if (!nSpaced) return "pantry";
+  if (isProbablyNotAnItem(nSpaced)) return "pantry";
 
   for (const rule of CATEGORY_RULES) {
     for (const kw of rule.keywords) {
