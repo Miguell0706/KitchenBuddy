@@ -83,7 +83,7 @@ export const CATEGORY_RULES: ReadonlyArray<{
     category: "meatSeafood",
     keywords: [
       "chicken", "chicken breast", "chicken thigh",
-      "beef", "ground beef", "steak",
+      "beef", "ground beef", "steak",'boneless',
       "pork", "pork chop", "ham", "bacon",
       "sausage", "bratwurst",
       "turkey", "ground turkey",
@@ -133,7 +133,11 @@ export const CATEGORY_RULES: ReadonlyArray<{
     keywords: [
       "ketchup", "mustard", "mayo", "mayonnaise",
       "soy sauce", "teriyaki",
-      "hot sauce", "sriracha",
+      "hot sauce", "sriracha", "tabasco",
+      "salsa", 'hoisin sauce', 'oyster sauce',
+      'avocado oil','sesami oil','olive oil',
+      "oil", "vinegar",
+      "salad dressing", "italian dressing",
       "bbq", "barbecue",
       "dressing", "ranch", "vinaigrette",
       "vinegar", "balsamic",

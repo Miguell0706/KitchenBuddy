@@ -29,6 +29,65 @@ type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
   expiryDate?: string | null; // YYYY-MM-DD
 };
+type CanonResult = {
+  key: string;
+  canonicalName?: string;
+  status: "item" | "not_item" | "unknown";
+  kind: "food" | "household" | "other";
+  ingredientType?: string;
+  confidence?: number;
+  source?: string;
+};
+
+type MergedRow = {
+  id: string;
+  text: string;
+  key: string;
+  result: CanonResult;
+};
+
+function bestResultByCanon(merged: any[]) {
+  const best = new Map<string, any>();
+
+  const canonId = (m: any) => {
+    const r = m?.result ?? {};
+    const name = (r.canonicalName ?? "").trim();
+    if (r.status === "item" && name) return `name:${name.toLowerCase()}`;
+    return `key:${(r.key ?? m?.key ?? "").trim()}`;
+  };
+
+  const score = (m: any) => {
+    const r = m.result ?? {};
+    const conf = r.confidence ?? 0;
+    const isItem = r.status === "item" ? 1 : 0;
+    const isFood = r.kind === "food" ? 1 : 0;
+    const hasCanon = r.canonicalName?.trim() ? 1 : 0;
+
+    const digitPenalty = ((m.text ?? "").match(/\d/g)?.length ?? 0) * 0.02;
+    const lengthPenalty = Math.min((m.text ?? "").length, 40) * 0.002;
+
+    return (
+      conf +
+      isItem * 0.3 +
+      isFood * 0.2 +
+      hasCanon * 0.1 -
+      digitPenalty -
+      lengthPenalty
+    );
+  };
+
+  for (const m of merged ?? []) {
+    const id = canonId(m);
+    if (!id) continue;
+
+    const prev = best.get(id);
+    if (!prev || score(m) > score(prev)) {
+      best.set(id, m.result);
+    }
+  }
+
+  return best;
+}
 
 function isoDateDaysFromNow(days: number) {
   const d = new Date();
@@ -156,13 +215,27 @@ export default function ScanEditScreen() {
           "✅ canonicalize-items response",
           JSON.stringify(data, null, 2)
         );
-        // build map: id -> result
+
+        const merged = data.merged ?? [];
+        const bestByCanon = bestResultByCanon(merged);
+
+        const canonId = (m: any) => {
+          const r = m?.result ?? {};
+          const name = (r.canonicalName ?? "").trim();
+          if (r.status === "item" && name) return `name:${name.toLowerCase()}`;
+          return `key:${(r.key ?? m?.key ?? "").trim()}`;
+        };
+
         const byId = new Map<string, any>(
-          (data.merged ?? []).map((m: any) => [m.id, m.result])
+          merged.map((m: any) => {
+            const id = canonId(m);
+            return [m.id, bestByCanon.get(id) ?? m.result];
+          })
         );
 
-        setItems((prev) =>
-          prev.map((it) => {
+        setItems((prev) => {
+          // PASS 1: apply canonical results to each row
+          const mapped = prev.map((it) => {
             const r = byId.get(it.id);
             if (!r) return it;
 
@@ -171,11 +244,11 @@ export default function ScanEditScreen() {
               r.kind === "other" ||
               r.kind === "household";
 
-            // update name + selection logic
             const nextName =
               r.status === "item" && r.canonicalName?.trim()
                 ? r.canonicalName
                 : it.name;
+
             const autoSelect =
               !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
@@ -192,8 +265,50 @@ export default function ScanEditScreen() {
               selected: excluded ? false : autoSelect || it.selected,
               excluded,
             };
-          })
-        );
+          });
+
+          // PASS 2: collapse duplicates (by canonicalized name)
+          const groups = new Map<string, (typeof mapped)[number]>();
+
+          const groupKeyFor = (it: (typeof mapped)[number]) => {
+            const n = (it.name ?? "").trim().toLowerCase();
+            return n ? `name:${n}` : `id:${it.id}`;
+          };
+
+          const score = (it: (typeof mapped)[number]) => {
+            // Prefer selected + non-excluded; slight preference for longer name (more specific)
+            return (
+              (it.selected ? 10 : 0) +
+              (!it.excluded ? 5 : 0) +
+              Math.min((it.name ?? "").length, 40) * 0.01
+            );
+          };
+
+          for (const it of mapped) {
+            const k = groupKeyFor(it);
+            const existing = groups.get(k);
+
+            if (!existing) {
+              groups.set(k, it);
+              continue;
+            }
+
+            const keep = score(it) > score(existing) ? it : existing;
+            const other = keep === it ? existing : it;
+
+            // Merge without adding fields
+            groups.set(k, {
+              ...keep,
+              selected: keep.selected || other.selected, // if any selected, selected
+              excluded: keep.excluded && other.excluded, // only excluded if both excluded
+              categoryKey: keep.categoryKey ?? other.categoryKey,
+              expiryDate: keep.expiryDate ?? other.expiryDate,
+              // sourceLine: keep.sourceLine ?? other.sourceLine, // only if this exists on your type
+            });
+          }
+
+          return Array.from(groups.values());
+        });
       } catch (e: any) {
         if (!cancelled) {
           if (e?.name === "AbortError") {
