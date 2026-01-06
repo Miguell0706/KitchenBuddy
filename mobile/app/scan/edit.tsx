@@ -20,6 +20,13 @@ import {
 import { inferCategoryFromName } from "@/features/pantry/categoryInference";
 import type { CategoryKey, PantryItem } from "@/features/pantry/types";
 import { addPantryItems } from "@/features/pantry/storage";
+import {
+  readFixStore,
+  normalizeFixKey,
+  makeFixFromFields,
+  upsertFix,
+  type ItemFix,
+} from "@/features/scan/fixStore";
 
 import {
   parseReceiptNamesOnlyWithReport,
@@ -39,13 +46,11 @@ type CanonResult = {
   source?: string;
 };
 
-type MergedRow = {
-  id: string;
-  text: string;
-  key: string;
-  result: CanonResult;
+type Baseline = {
+  name: string;
+  categoryKey: CategoryKey;
+  expiryDate: string | null;
 };
-
 function bestResultByCanon(merged: any[]) {
   const best = new Map<string, any>();
 
@@ -151,21 +156,85 @@ export default function ScanEditScreen() {
     );
   }, []);
 
+  const canonDoneRef = React.useRef(false);
+  const fixesRef = React.useRef<Record<string, ItemFix>>({});
+  const baselineRef = React.useRef<Map<string, Baseline>>(new Map());
+  const baselineReadyRef = React.useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const store = await readFixStore();
+      if (cancelled) return;
+      fixesRef.current = store.byKey;
+      console.log("🧠 loaded fixes", Object.keys(store.byKey).length);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rawText]);
+
+  useEffect(() => {
+    baselineReadyRef.current = false;
+    baselineRef.current = new Map();
+  }, [rawText]);
+  useEffect(() => {
+    canonDoneRef.current = false;
+    baselineReadyRef.current = false;
+    baselineRef.current = new Map();
+  }, [rawText]);
+
   useEffect(() => {
     setItems(
       parsedItems.map((it) => {
-        const baseName = it.name ?? it.sourceLine ?? "";
-        const categoryKey = inferCategoryFromName(baseName);
-        const expiryDate = defaultExpiryForCategory(categoryKey);
+        const baseName = (it.name ?? it.sourceLine ?? "").trim();
+        const baseCategory = inferCategoryFromName(baseName);
+        const baseExpiry = defaultExpiryForCategory(baseCategory);
+
+        // try to apply a stored fix (key off sourceLine ideally)
+        const raw = (it.sourceLine ?? baseName).trim();
+        const key = normalizeFixKey(raw);
+        const fix = key ? fixesRef.current[key] : undefined;
+
+        if (!fix) {
+          return {
+            ...it,
+            name: baseName,
+            categoryKey: baseCategory,
+            expiryDate: baseExpiry,
+          };
+        }
 
         return {
           ...it,
-          categoryKey,
-          expiryDate,
+          name: fix.canonicalName || baseName,
+          categoryKey: fix.categoryKey ?? baseCategory,
+          expiryDate:
+            fix.expiryMode === "none" ? null : fix.expiryDate ?? baseExpiry,
+          // optionally auto-select fixed items
+          selected: true,
         };
       })
     );
   }, [parsedItems]);
+
+  useEffect(() => {
+    if (!canonDoneRef.current) return; // ✅ wait for canonicalize
+    if (aiLoading) return;
+    if (baselineReadyRef.current) return;
+    if (!items || items.length === 0) return;
+
+    const m = new Map<string, Baseline>();
+    for (const it of items) {
+      m.set(it.id, {
+        name: (it.name ?? "").trim(),
+        categoryKey: (it.categoryKey ?? "pantry") as CategoryKey,
+        expiryDate: it.expiryDate ?? null,
+      });
+    }
+
+    baselineRef.current = m;
+    baselineReadyRef.current = true;
+  }, [aiLoading, items]);
 
   useEffect(() => {
     if (!report) return;
@@ -236,7 +305,24 @@ export default function ScanEditScreen() {
         setItems((prev) => {
           // PASS 1: apply canonical results to each row
           const mapped = prev.map((it) => {
-            const r = byId.get(it.id);
+            const raw = (it.sourceLine ?? it.name ?? "").trim();
+            const key = normalizeFixKey(raw);
+            const fix = key ? fixesRef.current[key] : undefined;
+
+            if (fix) {
+              // respect user fix; still allow excluded logic if you want
+              return {
+                ...it,
+                name: fix.canonicalName ?? it.name,
+                categoryKey: fix.categoryKey ?? it.categoryKey,
+                expiryDate:
+                  fix.expiryMode === "none"
+                    ? null
+                    : fix.expiryDate ?? it.expiryDate,
+                selected: true,
+              };
+            }
+            let r = byId.get(it.id);
             if (!r) return it;
 
             const excluded =
@@ -252,8 +338,10 @@ export default function ScanEditScreen() {
             const autoSelect =
               !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-            const nextCategory =
-              it.categoryKey ?? inferCategoryFromName(nextName ?? "");
+            const nextCategory = excluded
+              ? it.categoryKey ?? "pantry" // or keep whatever you want for excluded
+              : inferCategoryFromName(nextName ?? "");
+
             const nextExpiry =
               it.expiryDate ?? defaultExpiryForCategory(nextCategory);
 
@@ -322,6 +410,7 @@ export default function ScanEditScreen() {
         }
       } finally {
         if (!cancelled) {
+          canonDoneRef.current = true; // ✅ mark canonicalize done
           setAiLoading(false);
         }
       }
@@ -335,6 +424,35 @@ export default function ScanEditScreen() {
   }, [parsedItems]);
 
   const selectedCount = items.filter((i) => i.selected).length;
+  function didChange(base: Baseline, it: DraftScanItem) {
+    return (
+      base.name !== (it.name ?? "").trim() ||
+      base.categoryKey !== ((it.categoryKey ?? "pantry") as CategoryKey) ||
+      (base.expiryDate ?? null) !== (it.expiryDate ?? null)
+    );
+  }
+
+  async function saveFixesForUserEdits(chosen: DraftScanItem[]) {
+    const base = baselineRef.current;
+
+    for (const it of chosen) {
+      const b = base.get(it.id);
+      if (!b) continue;
+      if (!didChange(b, it)) continue;
+
+      const raw = (it.sourceLine ?? b.name ?? it.name ?? "").trim();
+      const key = normalizeFixKey(raw);
+      if (!key) continue;
+
+      const fix = makeFixFromFields({
+        canonicalName: (it.name ?? "").trim(),
+        categoryKey: (it.categoryKey ?? "pantry") as CategoryKey,
+        expiryDate: it.expiryDate ?? null,
+      });
+
+      await upsertFix(key, fix);
+    }
+  }
 
   function toggleSelected(id: string) {
     setItems((prev) =>
@@ -413,6 +531,7 @@ export default function ScanEditScreen() {
     try {
       const newPantryItems = toPantryItems(chosen); // ✅ only chosen
       await addPantryItems(newPantryItems); // ✅ writes to AsyncStorage
+      await saveFixesForUserEdits(chosen);
 
       router.replace("/(tabs)/pantry");
     } catch (e) {
