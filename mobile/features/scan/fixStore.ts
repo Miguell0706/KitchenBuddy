@@ -8,6 +8,7 @@ import type { CategoryKey } from "@/features/pantry/types";
 
 const STORAGE_KEY = "receiptchef:item_fixes:v1";
 const VERSION = 1;
+export const FIXES_KEY = "scan_fixes_v1"; // <-- replace with your real key
 
 // keep it sane; prune oldest if it grows too large
 const MAX_KEYS = 1500;
@@ -15,6 +16,36 @@ const MIN_KEY_LEN = 3;
 
 export type ExpiryMode = "none" | "date"; // keep simple for now
 
+export type StoredFix = {
+  canonicalName: string;
+  categoryKey: string;
+  expiryDate: string | null;
+  // optional: add updatedAt if you have it
+  updatedAt?: number;
+};
+
+export type FixMap = Record<string, StoredFix>;
+
+export async function loadFixes(): Promise<FixMap> {
+  const s = await AsyncStorage.getItem(FIXES_KEY);
+  if (!s) return {};
+  try {
+    const parsed = JSON.parse(s);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function deleteFix(key: string) {
+  const map = await loadFixes();
+  delete map[key];
+  await AsyncStorage.setItem(FIXES_KEY, JSON.stringify(map));
+}
+
+export async function clearFixes() {
+  await AsyncStorage.removeItem(FIXES_KEY);
+}
 export type ItemFix = {
   canonicalName: string;
   categoryKey: CategoryKey;
@@ -177,6 +208,10 @@ export async function bumpFixUsage(key: string, inc = 1): Promise<void> {
   };
 
   await writeFixStore(store);
+}
+export async function listFixes(): Promise<Record<string, ItemFix>> {
+  const store = await readFixStore();
+  return store.byKey ?? {};
 }
 
 /**

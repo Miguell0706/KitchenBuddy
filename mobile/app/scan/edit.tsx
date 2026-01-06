@@ -451,6 +451,7 @@ export default function ScanEditScreen() {
       });
 
       await upsertFix(key, fix);
+      console.log("✅ upsertFix", { key, fix });
     }
   }
 

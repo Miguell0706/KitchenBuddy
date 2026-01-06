@@ -3,7 +3,15 @@ import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing } from "@/constants/theme";
 import { CardStyles, Layout, TextStyles } from "@/constants/styles";
+import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { CORRECTIONS_KEY } from "@/features/scan/correctionStorage";
 
+async function debugDumpCorrections() {
+  const raw = await AsyncStorage.getItem(CORRECTIONS_KEY);
+  console.log("📦 CORRECTIONS RAW:", raw);
+}
+debugDumpCorrections();
 function Row({
   icon,
   title,
@@ -288,7 +296,7 @@ export default function SettingsScreen() {
           icon="document-text-outline"
           title="View scan cache & receipt corrections"
           subtitle="Redo local line edits before saving to pantry"
-          onPress={() => Alert.alert("Scan cache", "Placeholder.")}
+          onPress={() => router.push("/settings/scan-cache")}
           right={
             <Ionicons
               name="chevron-forward"
