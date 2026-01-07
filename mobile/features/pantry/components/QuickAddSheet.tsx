@@ -47,9 +47,15 @@ const CATEGORY_OPTIONS: {
   { key: "household", label: "Household", icon: "home-outline" },
   { key: "supplements", label: "Supplements", icon: "medkit-outline" },
 ];
+function isoDateDaysFromNow(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
 
 export function QuickAddSheet({ open, onClose }: Props) {
   const quickAddItem = usePantryStore((s) => s.addItem);
+  // addItem should be: (item: PantryItem) => void
 
   const [name, setName] = useState("");
   const [categoryKey, setCategoryKey] = useState<CategoryKey>("produce");
@@ -72,18 +78,28 @@ export function QuickAddSheet({ open, onClose }: Props) {
     const normalizedName = name.trim().slice(0, 40);
     if (!normalizedName) return;
 
-    const d = CATEGORY_DEFAULT_EXPIRY[categoryKey];
+    // Default expiry config for this category
+    const d = CATEGORY_DEFAULT_EXPIRY[categoryKey] ?? "none";
+
+    // Your app type says PantryItem has `expiresInDays`
     const expiresInDays = d === "none" ? 9999 : d;
+
+    // For "none", you can decide if you want null or a far future date.
+    const expiryDate = d === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
     quickAddItem(categoryKey, {
       id: nanoid(),
       name: normalizedName,
       quantity: "",
-      expiresInDays,
+      categoryKey,
+      expiryDate,
+      expiresInDays, // ✅ required by PantryItem
+      // add other required fields here if TS complains about more
     });
 
     onClose();
   };
+
   return (
     <Modal
       visible={open}

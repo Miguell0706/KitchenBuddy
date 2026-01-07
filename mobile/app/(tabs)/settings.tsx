@@ -329,7 +329,7 @@ export default function SettingsScreen() {
           icon="trash-outline"
           title="View used/trashed items"
           subtitle="Recently used or removed items"
-          onPress={() => Alert.alert("Used/trashed", "Placeholder.")}
+          onPress={() => router.push("/settings/pantry-history")}
           right={
             <Ionicons
               name="chevron-forward"

@@ -34,6 +34,7 @@ import { Colors, Spacing } from "@/constants/theme";
 import { BulkExpirySheet } from "@/features/pantry/components/BulkExpirySheet";
 import { BulkMoveSheet } from "@/features/pantry/components/BulkMoveSheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { appendPantryHistory } from "@/features/pantry/history";
 
 const PANTRY_KEY = "pantry_items_v1";
 
@@ -207,6 +208,15 @@ export default function PantryScreen() {
       return next;
     });
   };
+  async function handleMarkUsed(item: PantryItem) {
+    markUsed(item.categoryKey, item.id);
+    await appendPantryHistory(item, "used");
+  }
+
+  async function handleDelete(item: PantryItem) {
+    deleteItem(item.categoryKey, item.id);
+    await appendPantryHistory(item, "deleted");
+  }
 
   const bulkDeleteSelected = () => {
     setUndo(null);
@@ -299,19 +309,16 @@ export default function PantryScreen() {
     setEditOpen(true);
   };
 
-  const confirmDelete = (categoryKey: CategoryKey, item: PantryItem) => {
-    Alert.alert("Delete item?", item.name, [
+  function confirmDelete(categoryKey: string, item: PantryItem) {
+    Alert.alert("Delete item?", "This cannot be undone", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          deleteItem(categoryKey, item.id);
-        },
+        onPress: () => handleDelete(item), // <- logs + deletes
       },
     ]);
-  };
+  }
 
   const toggleAll = () => {
     const nextOpen = !allOpen;
@@ -702,10 +709,10 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
-                    onPressUsed={() => markUsed(item.categoryKey, item.id)}
+                    onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
-                    onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm
+                    onSwipeDelete={() => handleDelete(item)}
                   />
                 ))}
               </View>
@@ -783,10 +790,10 @@ export default function PantryScreen() {
                       Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
-                    onPressUsed={() => markUsed(item.categoryKey, item.id)}
+                    onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
-                    onSwipeDelete={() => deleteItem(item.categoryKey, item.id)}
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm
+                    onSwipeDelete={() => handleDelete(item)}
                   />
                 ))}
               </View>
@@ -870,10 +877,10 @@ export default function PantryScreen() {
                           Haptics.selectionAsync();
                           toggleSelected(cat.key, item.id);
                         }}
-                        onPressUsed={() => markUsed(cat.key, item.id)}
+                        onPressUsed={() => handleMarkUsed(item)}
                         onPressEdit={() => openEdit(cat.key, item.id)}
                         onPressDelete={() => confirmDelete(cat.key, item)}
-                        onSwipeDelete={() => deleteItem(cat.key, item.id)}
+                        onSwipeDelete={() => handleDelete(item)}
                       />
                     ))}
                 </View>
