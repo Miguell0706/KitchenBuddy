@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import { recognizeText } from "@infinitered/react-native-mlkit-text-recognition";
+import { addScanHistoryEntry } from "@/features/scan/historyStorage";
 
 type OcrPhase = "idle" | "preparing" | "reading" | "parsing" | "done";
 
@@ -189,6 +190,9 @@ export default function ScanScreen() {
       setPhase("done");
       setProgress(1);
       setIsRunning(false);
+
+      // ✅ NEW: save successful scan image to history
+      await addScanHistoryEntry(uri);
 
       // If OCR looks incomplete, warn BEFORE navigating (but still navigate).
       if (!health.ok) {

@@ -282,7 +282,7 @@ export default function SettingsScreen() {
           icon="time-outline"
           title="View previous scans"
           subtitle="See your scan history"
-          onPress={() => Alert.alert("Scan history", "Placeholder.")}
+          onPress={() => router.push("/settings/scan-history")}
           right={
             <Ionicons
               name="chevron-forward"
