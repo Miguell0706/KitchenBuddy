@@ -13,10 +13,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import { CANONICALIZE_URL } from "@/config/api";
 import { getDeviceId } from "@/src/utils/deviceId";
 import { fetchWithTimeout } from "@/src/utils/fetchWithTimeout";
-import {
-  CATEGORIES,
-  CATEGORY_DEFAULT_EXPIRY,
-} from "@/features/pantry/constants";
 import { inferCategoryFromName } from "@/features/pantry/categoryInference";
 import type { CategoryKey, PantryItem } from "@/features/pantry/types";
 import { addPantryItems } from "@/features/pantry/storage";
@@ -27,7 +23,11 @@ import {
   upsertFix,
   type ItemFix,
 } from "@/features/scan/fixStore";
-
+import {
+  CATEGORIES,
+  CATEGORY_DEFAULT_EXPIRY,
+} from "@/features/pantry/constants";
+import { useSettingsStore } from "@/features/settings/store";
 import {
   parseReceiptNamesOnlyWithReport,
   type ParsedItem,
@@ -119,16 +119,24 @@ function toPantryItems(drafts: DraftScanItem[]): PantryItem[] {
   }));
 }
 
-function defaultExpiryForCategory(categoryKey: CategoryKey): string | null {
-  const rule = CATEGORY_DEFAULT_EXPIRY[categoryKey];
-  if (rule === "none") return null;
-  return isoDateDaysFromNow(rule);
-}
 export default function ScanEditScreen() {
-  const params = useLocalSearchParams<{
-    rawText?: string;
-  }>();
+  const params = useLocalSearchParams<{ rawText?: string }>();
   const [aiLoading, setAiLoading] = useState(false);
+
+  // 👇 read overrides ONCE, with a hook (allowed here)
+  const expiryOverrides = useSettingsStore((s) => s.expiryOverrides);
+
+  const defaultExpiryDateForCategory = React.useCallback(
+    (categoryKey: CategoryKey): string | null => {
+      const rule =
+        expiryOverrides[categoryKey] ?? CATEGORY_DEFAULT_EXPIRY[categoryKey];
+
+      if (rule === "none" || rule == null) return null;
+      return isoDateDaysFromNow(rule as number);
+    },
+    [expiryOverrides]
+  );
+
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
   const { items: parsedItems, report } = useMemo(
     () => parseReceiptNamesOnlyWithReport(rawText, false),
@@ -188,7 +196,7 @@ export default function ScanEditScreen() {
       parsedItems.map((it) => {
         const baseName = (it.name ?? it.sourceLine ?? "").trim();
         const baseCategory = inferCategoryFromName(baseName);
-        const baseExpiry = defaultExpiryForCategory(baseCategory);
+        const baseExpiry = defaultExpiryDateForCategory(baseCategory);
 
         // try to apply a stored fix (key off sourceLine ideally)
         const raw = (it.sourceLine ?? baseName).trim();
@@ -338,12 +346,10 @@ export default function ScanEditScreen() {
             const autoSelect =
               !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-            const nextCategory = excluded
-              ? it.categoryKey ?? "pantry" // or keep whatever you want for excluded
-              : inferCategoryFromName(nextName ?? "");
-
+            const nextCategory =
+              it.categoryKey ?? inferCategoryFromName(nextName ?? "");
             const nextExpiry =
-              it.expiryDate ?? defaultExpiryForCategory(nextCategory);
+              it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
 
             return {
               ...it,
@@ -397,9 +403,11 @@ export default function ScanEditScreen() {
 
           return Array.from(groups.values());
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          if (e?.name === "AbortError") {
+          const errName = (e as any)?.name as string | undefined;
+
+          if (errName === "AbortError") {
             Alert.alert(
               "Waking server",
               "Server is starting up. Try again in a moment."
@@ -431,7 +439,6 @@ export default function ScanEditScreen() {
       (base.expiryDate ?? null) !== (it.expiryDate ?? null)
     );
   }
-
   async function saveFixesForUserEdits(chosen: DraftScanItem[]) {
     const base = baselineRef.current;
 
@@ -468,7 +475,7 @@ export default function ScanEditScreen() {
 
         const nextCategory = it.categoryKey ?? inferCategoryFromName(name);
         const nextExpiry =
-          it.expiryDate ?? defaultExpiryForCategory(nextCategory);
+          it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
 
         return {
           ...it,
@@ -497,7 +504,7 @@ export default function ScanEditScreen() {
               ...it,
               categoryKey,
               // when category changes, reset expiry to that category default
-              expiryDate: defaultExpiryForCategory(categoryKey),
+              expiryDate: defaultExpiryDateForCategory(categoryKey),
             }
           : it
       )
@@ -811,10 +818,13 @@ export default function ScanEditScreen() {
                   }
 
                   if (opt.kind === "default") {
-                    updateExpiry(
-                      expiryPickerForId,
-                      defaultExpiryForCategory(cat)
-                    );
+                    if (!expiryPickerForId) return;
+
+                    const item = items.find((i) => i.id === expiryPickerForId);
+                    const cat = item?.categoryKey ?? "pantry";
+
+                    const nextExpiry = defaultExpiryDateForCategory(cat);
+                    updateExpiry(expiryPickerForId, nextExpiry);
                     closeExpiryPicker();
                     return;
                   }

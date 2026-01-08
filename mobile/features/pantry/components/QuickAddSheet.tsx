@@ -21,7 +21,7 @@ import {
 } from "@/constants/styles";
 import type { CategoryKey } from "@/features/pantry/types";
 import { usePantryStore } from "@/features/pantry/store"; // adjust path
-import { CATEGORY_DEFAULT_EXPIRY } from "@/features/pantry/constants";
+import { useDefaultExpiry } from "@/features/pantry/useDefaultExpiry";
 
 type Props = {
   open: boolean;
@@ -55,12 +55,13 @@ function isoDateDaysFromNow(days: number): string {
 
 export function QuickAddSheet({ open, onClose }: Props) {
   const quickAddItem = usePantryStore((s) => s.addItem);
-  // addItem should be: (item: PantryItem) => void
 
   const [name, setName] = useState("");
   const [categoryKey, setCategoryKey] = useState<CategoryKey>("produce");
   const [catOpen, setCatOpen] = useState(false);
-  // reset when opened
+
+  // 👇 call hook here, using the current categoryKey
+  const defaultExpiry = useDefaultExpiry(categoryKey);
 
   useEffect(() => {
     if (!open) return;
@@ -78,13 +79,9 @@ export function QuickAddSheet({ open, onClose }: Props) {
     const normalizedName = name.trim().slice(0, 40);
     if (!normalizedName) return;
 
-    // Default expiry config for this category
-    const d = CATEGORY_DEFAULT_EXPIRY[categoryKey] ?? "none";
+    const d = defaultExpiry; // number | "none"
 
-    // Your app type says PantryItem has `expiresInDays`
     const expiresInDays = d === "none" ? 9999 : d;
-
-    // For "none", you can decide if you want null or a far future date.
     const expiryDate = d === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
     quickAddItem(categoryKey, {
@@ -93,8 +90,7 @@ export function QuickAddSheet({ open, onClose }: Props) {
       quantity: "",
       categoryKey,
       expiryDate,
-      expiresInDays, // ✅ required by PantryItem
-      // add other required fields here if TS complains about more
+      expiresInDays,
     });
 
     onClose();

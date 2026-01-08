@@ -315,7 +315,7 @@ export default function SettingsScreen() {
           icon="options-outline"
           title="Change category expiry default dates"
           subtitle="Set default expiry days per category"
-          onPress={() => Alert.alert("Category defaults", "Placeholder.")}
+          onPress={() => router.push("/settings/category-settings")}
           right={
             <Ionicons
               name="chevron-forward"

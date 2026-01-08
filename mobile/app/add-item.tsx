@@ -20,7 +20,7 @@ import {
 } from "@/constants/styles";
 import { router } from "expo-router";
 import type { CategoryKey } from "@/features/pantry/types";
-import { CATEGORY_DEFAULT_EXPIRY } from "@/features/pantry/constants";
+import { useDefaultExpiry } from "@/features/pantry/useDefaultExpiry";
 import { usePantryStore } from "@/features/pantry/store";
 import * as Haptics from "expo-haptics";
 
@@ -67,6 +67,12 @@ const EXPIRY_PRESETS: ExpiryPreset[] = [
   { key: "none", label: "No expiry", value: "none" },
   { key: "custom", label: "Custom", value: "custom" },
 ];
+function isoDateDaysFromNow(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
+
 function Chip({
   label,
   selected,
@@ -102,8 +108,10 @@ export default function AddItemModal() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const addItem = usePantryStore((s) => s.addItem);
 
+  // 👇 this is the overridable default for the current category
+  const defaultExpiry = useDefaultExpiry(category);
+
   // expiry selection
-  // "auto" means use DEFAULT_EXPIRY_BY_CATEGORY
   const [expiryMode, setExpiryMode] = useState<
     "auto" | "preset" | "none" | "custom"
   >("auto");
@@ -116,10 +124,13 @@ export default function AddItemModal() {
   );
   useEffect(() => {
     if (expiryMode !== "auto") return;
-    const d = CATEGORY_DEFAULT_EXPIRY[category];
-    if (typeof d === "number") setPresetDays(d);
-    else setPresetDays(7); // harmless display fallback
-  }, [category, expiryMode]);
+    if (typeof defaultExpiry === "number") {
+      setPresetDays(defaultExpiry);
+    } else {
+      // defaultExpiry === "none" or undefined, fall back to 7 just for UI
+      setPresetDays(7);
+    }
+  }, [defaultExpiry, expiryMode]);
 
   const close = () => {
     // avoid GO_BACK warning when no history (fast refresh / deep link)
@@ -133,19 +144,27 @@ export default function AddItemModal() {
 
   const computedExpiry = useMemo((): number | "none" => {
     if (expiryMode === "none") return "none";
-    if (expiryMode === "preset") return presetDays;
+
+    if (expiryMode === "preset") {
+      return presetDays;
+    }
+
     if (expiryMode === "custom") {
       const n = parseInt(customDays, 10);
-      if (!Number.isFinite(n) || n <= 0)
-        return CATEGORY_DEFAULT_EXPIRY[category] === "none"
+      if (!Number.isFinite(n) || n <= 0) {
+        // invalid custom → fall back to the default for this category
+        return defaultExpiry === "none"
           ? "none"
-          : (CATEGORY_DEFAULT_EXPIRY[category] as number);
+          : typeof defaultExpiry === "number"
+          ? defaultExpiry
+          : 7; // extra safety fallback
+      }
       return n;
     }
-    // auto
-    return CATEGORY_DEFAULT_EXPIRY[category];
-  }, [expiryMode, presetDays, customDays, category]);
 
+    // "auto" → use overridable default
+    return defaultExpiry;
+  }, [expiryMode, presetDays, customDays, defaultExpiry]);
   const onSave = () => {
     const normalizedName = name.trim().slice(0, 40);
 
@@ -156,17 +175,23 @@ export default function AddItemModal() {
 
     const quantity = qty.trim() || "1";
     const expiresInDays = computedExpiry === "none" ? 9999 : computedExpiry;
+    const expiryDate =
+      computedExpiry === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
     addItem(category, {
-      id: `${Date.now()}`, // simple unique id for V1
+      id: `${Date.now()}`,
       name: normalizedName,
       quantity,
+      categoryKey: category,
+      expiryDate,
       expiresInDays,
+      // 🔧 add any other required fields if TS still complains
     });
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     close();
   };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}

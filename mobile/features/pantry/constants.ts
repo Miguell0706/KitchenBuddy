@@ -27,14 +27,14 @@ export const CATEGORIES: Category[] = [
   },
 ];
 export const CATEGORY_DEFAULT_EXPIRY: Record<CategoryKey, number | "none"> = {
-  produce: 5,
-  meatSeafood: 3,
-  dairyEggs: 7,
-  bakery: 3,
+  produce: 14,
+  meatSeafood: 7,
+  dairyEggs: 14,
+  bakery: 7,
   pantry: 180,
   condiments: 365,
   spices: 365,
-  beverages: 30,
+  beverages: 50,
   frozen: 90,
   snacks: 60,
   pet: 60, // 👈 add

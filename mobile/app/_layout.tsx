@@ -1,3 +1,4 @@
+import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import {
   DarkTheme,
@@ -9,11 +10,12 @@ import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSettingsStore } from "@/features/settings/store"; // 👈 import settings store
 
 export const unstable_settings = {
   anchor: "(tabs)",
 };
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 if (__DEV__) {
   (globalThis as any).pantryDebug = {
@@ -44,6 +46,19 @@ if (__DEV__) {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // 👇 hydrate settings once at app startup
+  const hydrateSettings = useSettingsStore((s) => s.hydrate);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await hydrateSettings();
+      } catch (err) {
+        console.warn("Failed to hydrate settings store", err);
+      }
+    })();
+  }, [hydrateSettings]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
