@@ -9,11 +9,17 @@ type PantryState = {
   pantry: PantryByCategory;
 
   // ✅ accept either a full object OR an updater fn like React setState
-  setPantry: (next: PantryByCategory | ((prev: PantryByCategory) => PantryByCategory)) => void;
+  setPantry: (
+    next: PantryByCategory | ((prev: PantryByCategory) => PantryByCategory)
+  ) => void;
 
   addItem: (categoryKey: CategoryKey, item: PantryItem) => void;
   getItem: (categoryKey: CategoryKey, id: string) => PantryItem | undefined;
-  updateItem: (categoryKey: CategoryKey, id: string, patch: Partial<PantryItem>) => void;
+  updateItem: (
+    categoryKey: CategoryKey,
+    id: string,
+    patch: Partial<PantryItem>
+  ) => void;
 };
 
 const NAME_MAX = 40;
