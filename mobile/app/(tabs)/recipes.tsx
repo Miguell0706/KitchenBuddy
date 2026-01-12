@@ -47,6 +47,7 @@ const RecipesScreen: React.FC = () => {
 
   function handleExpiringSoon() {
     const ids = expiringSoon.map((it) => it.id);
+    console.log("🔥 handleUseExpiring ids:", ids);
     router.push({
       pathname: "/recipes/expiring",
       params: { itemIds: JSON.stringify(ids) },
@@ -80,57 +81,34 @@ const RecipesScreen: React.FC = () => {
         </Text>
 
         {/* Saved recipes */}
-        <View style={styles.section}>
+        <TouchableOpacity style={styles.section} onPress={handleOpenSaved}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Saved recipes</Text>
-            {recipes.length > 0 && (
-              <TouchableOpacity onPress={handleOpenSaved}>
-                <Text style={styles.link}>See all</Text>
-              </TouchableOpacity>
-            )}
+            <Text style={styles.link}>See all</Text>
           </View>
 
-          {recipes.length === 0 ? (
-            <View style={[styles.cardBase, styles.emptyCard]}>
-              <Ionicons name="bookmark-outline" size={24} />
-              <Text style={styles.emptyTitle}>No recipes saved yet</Text>
-              <Text style={styles.emptyText}>
-                When you like a recipe, save it and it will show up here.
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.savedList}
-            >
-              {recipes.slice(0, 10).map((r) => (
-                <TouchableOpacity
-                  key={r.id}
-                  style={[styles.cardBase, styles.recipeCard]}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/recipes/[id]",
-                      params: { id: r.id },
-                    })
-                  }
-                >
-                  <View style={styles.recipeImageStub}>
-                    <Ionicons name="restaurant-outline" size={26} />
-                  </View>
-                  <Text numberOfLines={2} style={styles.recipeTitle}>
-                    {r.title}
-                  </Text>
-                  {r.totalTimeMinutes != null && (
-                    <Text style={styles.recipeMeta}>
-                      ~{r.totalTimeMinutes} min
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </View>
+          <View style={[styles.cardBase, styles.emptyCard]}>
+            {recipes.length === 0 ? (
+              <>
+                <Ionicons name="bookmark-outline" size={24} />
+                <Text style={styles.emptyTitle}>No recipes saved yet</Text>
+                <Text style={styles.emptyText}>
+                  When you like a recipe, save it and it will show up here.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="book-outline" size={24} />
+                <Text style={styles.emptyTitle}>
+                  {recipes.length} recipe{recipes.length > 1 ? "s" : ""} saved
+                </Text>
+                <Text style={styles.emptyText}>
+                  Tap to view all your saved recipes.
+                </Text>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
 
         {/* Easy ideas (free) */}
         <View style={styles.section}>

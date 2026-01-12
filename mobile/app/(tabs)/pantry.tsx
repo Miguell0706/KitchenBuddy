@@ -26,7 +26,7 @@ import {
 } from "@/features/pantry/constants";
 import { PantryRow } from "@/features/pantry/components/PantryRow";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
-import { matchesQuery } from "@/features/pantry/utils";
+import { matchesQuery, getExpiresInDays } from "@/features/pantry/utils";
 import { usePantryStore } from "@/features/pantry/store";
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
@@ -459,15 +459,19 @@ export default function PantryScreen() {
     const flat: ExpiringRow[] = [];
     for (const key of ALL_CATEGORY_KEYS) {
       for (const item of pantry[key]) {
-        if (item.expiresInDays <= 0 && matchesQuery(item, q)) {
+        const d = getExpiresInDays(item);
+
+        if (d <= 0 && matchesQuery(item, q)) {
           flat.push({
             ...item,
+            expiresInDays: d, // keep this in the row if UI uses it
             categoryKey: key,
             categoryLabel: byKey.get(key) ?? key,
           });
         }
       }
     }
+
     flat.sort((a, b) => b.expiresInDays - a.expiresInDays);
     return flat;
   }, [pantry, q]);
@@ -480,13 +484,16 @@ export default function PantryScreen() {
     const flat: ExpiringRow[] = [];
     for (const key of ALL_CATEGORY_KEYS) {
       for (const item of pantry[key]) {
-        if (item.expiresInDays >= 9999) continue;
-        if (item.expiresInDays <= 0) continue;
-        if (item.expiresInDays > 7) continue;
+        const d = getExpiresInDays(item);
+
+        if (d >= 9999) continue; // no expiry
+        if (d <= 0) continue; // expired → goes to expiredItems
+        if (d > 7) continue; // out of “soon” window
         if (!matchesQuery(item, q)) continue;
 
         flat.push({
           ...item,
+          expiresInDays: d, // again, keep it updated if needed
           categoryKey: key,
           categoryLabel: byKey.get(key) ?? key,
         });

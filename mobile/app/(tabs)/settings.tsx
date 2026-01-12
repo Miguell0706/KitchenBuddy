@@ -9,7 +9,6 @@ import { CORRECTIONS_KEY } from "@/features/scan/correctionStorage";
 
 async function debugDumpCorrections() {
   const raw = await AsyncStorage.getItem(CORRECTIONS_KEY);
-  console.log("📦 CORRECTIONS RAW:", raw);
 }
 debugDumpCorrections();
 function Row({

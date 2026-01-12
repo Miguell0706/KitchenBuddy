@@ -9,7 +9,7 @@ export function matchesQuery(item: PantryItem, q: string) {
 }
 
 export function getExpiryBadge(item: PantryItem) {
-  const d = item.expiresInDays;
+  const d = getExpiresInDays(item);
 
   if (d <= 0) {
     const daysAgo = Math.abs(d);
@@ -70,4 +70,26 @@ export function getExpiryBadge(item: PantryItem) {
     text: [TagStyles.textDark, { color: "rgba(0, 110, 40, 0.95)" }],
     label: `${d} days`,
   };
+}
+export function getExpiresInDays(item: PantryItem): number {
+  // Treat "no expiry" as a big sentinel value
+  if (!item.expiryDate) return 9999;
+
+  const now = new Date();
+  const todayMs = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
+
+  const expiry = new Date(item.expiryDate);
+  const expiryMs = new Date(
+    expiry.getFullYear(),
+    expiry.getMonth(),
+    expiry.getDate()
+  ).getTime();
+
+  const diffDays = Math.round((expiryMs - todayMs) / (1000 * 60 * 60 * 24));
+
+  return diffDays;
 }

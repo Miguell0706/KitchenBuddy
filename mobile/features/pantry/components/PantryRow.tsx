@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 
 import { CardStyles, Layout, TextStyles } from "@/constants/styles";
 import { Colors, Spacing } from "@/constants/theme";
-import { getExpiryBadge } from "../utils";
+import { getExpiryBadge, getExpiresInDays } from "../utils";
 import type { PantryItem } from "../types";
 
 type Props = {
@@ -17,7 +17,6 @@ type Props = {
   onPressUsed: () => void;
   onToggleSelect: () => void; // bulk only
   onPressEdit: () => void; // normal tap
-
   onPressDelete: () => void; // confirm
   onSwipeDelete: () => void; // instant
 };
