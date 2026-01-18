@@ -15,7 +15,7 @@ import { usePantryStore } from "@/features/pantry/store";
 import { usePremiumStore } from "@/features/premium/store";
 import type { PantryItem } from "@/features/pantry/types";
 
-const EXPIRING_SOON_DAYS = 5;
+const EXPIRING_SOON_DAYS = 7;
 
 function isExpiringSoon(item: PantryItem): boolean {
   if (!item.expiryDate) return false;

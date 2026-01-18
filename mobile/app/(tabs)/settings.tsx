@@ -107,7 +107,7 @@ export default function SettingsScreen() {
   const [waterReminders, setWaterReminders] = useState(false);
 
   // expiry options
-  type ExpiryLead = "3d" | "1d" | "12h";
+  type ExpiryLead = "3d" | "2d" | "1d";
   const [expiryLead, setExpiryLead] = useState<ExpiryLead>("1d");
 
   const expirySubtitle = useMemo(() => {
@@ -182,16 +182,16 @@ export default function SettingsScreen() {
               onPress={() => setExpiryLead("3d")}
             />
             <RadioRow
+              title="2 days before"
+              subtitle="More time to plan"
+              selected={expiryLead === "2d"}
+              onPress={() => setExpiryLead("2d")}
+            />
+            <RadioRow
               title="1 day before"
               subtitle="Good default"
               selected={expiryLead === "1d"}
               onPress={() => setExpiryLead("1d")}
-            />
-            <RadioRow
-              title="12 hours before"
-              subtitle="Last-chance reminder"
-              selected={expiryLead === "12h"}
-              onPress={() => setExpiryLead("12h")}
             />
           </View>
         ) : null}

@@ -8,7 +8,6 @@ type PantryByCategory = Record<CategoryKey, PantryItem[]>;
 type PantryState = {
   pantry: PantryByCategory;
 
-  // ✅ accept either a full object OR an updater fn like React setState
   setPantry: (
     next: PantryByCategory | ((prev: PantryByCategory) => PantryByCategory)
   ) => void;
@@ -46,24 +45,25 @@ const normalizeItemPatch = (patch: Partial<PantryItem>) => {
 };
 
 export const usePantryStore = create<PantryState>((set, get) => ({
-  // ✅ Option A: start empty; PantryScreen hydrates from AsyncStorage
   pantry: buildEmptyPantry(),
 
+  // 🔐 Single mutation + (later) persistence point
   setPantry: (next) => {
-    set((state) => ({
-      pantry: typeof next === "function" ? next(state.pantry) : next,
-    }));
+    set((state) => {
+      const nextPantry = typeof next === "function" ? next(state.pantry) : next;
+
+      // 👇 This is where you'd persist to AsyncStorage:
+      // await savePantryToStorage(nextPantry);
+      return { pantry: nextPantry };
+    });
   },
 
   addItem: (categoryKey, item) => {
-    // normalize full item (safe: name/quantity trimming)
     const normalized = normalizeItemPatch(item) as PantryItem;
 
-    set((state) => ({
-      pantry: {
-        ...state.pantry,
-        [categoryKey]: [normalized, ...state.pantry[categoryKey]],
-      },
+    get().setPantry((prev) => ({
+      ...prev,
+      [categoryKey]: [normalized, ...(prev[categoryKey] ?? [])],
     }));
   },
 
@@ -74,13 +74,11 @@ export const usePantryStore = create<PantryState>((set, get) => ({
   updateItem: (categoryKey, id, patch) => {
     const normalizedPatch = normalizeItemPatch(patch);
 
-    set((state) => ({
-      pantry: {
-        ...state.pantry,
-        [categoryKey]: state.pantry[categoryKey].map((i) =>
-          i.id === id ? { ...i, ...normalizedPatch } : i
-        ),
-      },
+    get().setPantry((prev) => ({
+      ...prev,
+      [categoryKey]: prev[categoryKey].map((i) =>
+        i.id === id ? { ...i, ...normalizedPatch } : i
+      ),
     }));
   },
 }));

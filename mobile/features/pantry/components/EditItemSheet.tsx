@@ -21,6 +21,7 @@ import {
 } from "@/constants/styles";
 import type { CategoryKey } from "@/features/pantry/types";
 import { usePantryStore } from "@/features/pantry/store";
+import { getExpiresInDays } from "@/features/pantry/utils"; // adjust path
 
 type Props = {
   open: boolean;
@@ -29,27 +30,27 @@ type Props = {
 };
 
 export function EditItemSheet({ open, onClose, target }: Props) {
-  const getItem = usePantryStore((s) => s.getItem);
   const updateItem = usePantryStore((s) => s.updateItem);
 
-  const item = useMemo(() => {
+  // ✅ subscribe to item changes (no useMemo)
+  const item = usePantryStore((s) => {
     if (!target) return undefined;
-    return getItem(target.categoryKey, target.id);
-  }, [getItem, target]);
+    return s.getItem(target.categoryKey, target.id);
+  });
 
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
 
-  // Prefill on open/item change
   useEffect(() => {
     if (!open) return;
     if (!item) return;
+
     setName(item.name ?? "");
     setQuantity(item.quantity ?? "");
-    setExpiresInDays(
-      item.expiresInDays === undefined ? "" : String(item.expiresInDays)
-    );
+
+    const d = getExpiresInDays(item);
+    setExpiresInDays(d >= 9999 ? "" : String(d));
   }, [open, item]);
 
   // If bad target (deleted item)
@@ -73,17 +74,33 @@ export function EditItemSheet({ open, onClose, target }: Props) {
     }
 
     const expStr = expiresInDays.trim();
-    const d = expStr === "" ? undefined : Number(expStr);
+    let nextExpiryDate: string | null | undefined;
 
-    if (d !== undefined && (!Number.isFinite(d) || d < 0)) {
-      Alert.alert("Invalid expiry", "Expires in (days) must be 0 or more.");
-      return;
+    if (expStr === "") {
+      nextExpiryDate = null; // blank = "No expiry"
+      // nextExpiryDate = undefined; // blank = keep existing
+    } else {
+      const d = Number(expStr);
+
+      if (!Number.isFinite(d) || d < 0) {
+        Alert.alert("Invalid expiry", "Expires in (days) must be 0 or more.");
+        return;
+      }
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // local midnight
+      today.setDate(today.getDate() + d);
+
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      nextExpiryDate = `${yyyy}-${mm}-${dd}`; // YYYY-MM-DD
     }
 
     updateItem(target.categoryKey, target.id, {
       name: normalizedName,
       quantity: quantity.trim(),
-      ...(d === undefined ? {} : { expiresInDays: d }),
+      ...(nextExpiryDate === undefined ? {} : { expiryDate: nextExpiryDate }),
     });
 
     onClose();

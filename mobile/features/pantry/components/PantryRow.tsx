@@ -3,10 +3,9 @@ import { View, Text, Pressable } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-
 import { CardStyles, Layout, TextStyles } from "@/constants/styles";
 import { Colors, Spacing } from "@/constants/theme";
-import { getExpiryBadge, getExpiresInDays } from "../utils";
+import { getExpiryBadge } from "../utils";
 import type { PantryItem } from "../types";
 
 type Props = {
@@ -24,7 +23,6 @@ type Props = {
 export function PantryRow({
   item,
   bulkMode,
-  isSearching,
   checked,
   onToggleSelect,
   onPressEdit,

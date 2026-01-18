@@ -79,17 +79,49 @@ export function getExpiresInDays(item: PantryItem): number {
   const todayMs = new Date(
     now.getFullYear(),
     now.getMonth(),
-    now.getDate()
+    now.getDate(),
   ).getTime();
 
-  const expiry = new Date(item.expiryDate);
-  const expiryMs = new Date(
-    expiry.getFullYear(),
-    expiry.getMonth(),
-    expiry.getDate()
-  ).getTime();
+  // ✅ parse YYYY-MM-DD manually as LOCAL date (avoids UTC shift)
+  const [y, m, d] = item.expiryDate.split("-").map((n) => Number(n));
+  const expiryMs = new Date(y, (m ?? 1) - 1, d ?? 1).getTime();
 
-  const diffDays = Math.round((expiryMs - todayMs) / (1000 * 60 * 60 * 24));
-
+  const diffDays = Math.round((expiryMs - todayMs) / 86400000);
   return diffDays;
+}
+
+export function todayLocalMidnight() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function toYMD(d: Date) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+export function addDaysToExpiryDate(
+  expiryDate: string | null,
+  delta: number,
+): string | null {
+  if (!expiryDate) return null; // "no expiry" stays no expiry
+
+  // parse YYYY-MM-DD safely as local date
+  const [y, m, d] = expiryDate.split("-").map(Number);
+  const base = new Date(y, (m ?? 1) - 1, d ?? 1);
+  base.setDate(base.getDate() + delta);
+
+  // clamp so we never go before today if you want that behavior
+  const min = todayLocalMidnight();
+  if (base < min) return toYMD(min);
+
+  return toYMD(base);
+}
+
+export function setExpiryDaysFromToday(value: number): string {
+  const base = todayLocalMidnight();
+  base.setDate(base.getDate() + Math.max(0, value));
+  return toYMD(base);
 }

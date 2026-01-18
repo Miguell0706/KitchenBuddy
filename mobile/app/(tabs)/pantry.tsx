@@ -26,7 +26,12 @@ import {
 } from "@/features/pantry/constants";
 import { PantryRow } from "@/features/pantry/components/PantryRow";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
-import { matchesQuery, getExpiresInDays } from "@/features/pantry/utils";
+import {
+  matchesQuery,
+  getExpiresInDays,
+  setExpiryDaysFromToday,
+  addDaysToExpiryDate,
+} from "@/features/pantry/utils";
 import { usePantryStore } from "@/features/pantry/store";
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
@@ -39,10 +44,9 @@ import { appendPantryHistory } from "@/features/pantry/history";
 const PANTRY_KEY = "pantry_items_v1";
 
 type ExpiringRow = PantryItem & {
-  categoryKey: CategoryKey;
   categoryLabel: string;
+  expiresInDays: number; // derived
 };
-
 type Category = (typeof CATEGORIES)[number];
 
 function buildEmptyPantry(): Record<CategoryKey, PantryItem[]> {
@@ -288,10 +292,7 @@ export default function PantryScreen() {
     Haptics.selectionAsync();
     applyToSelected((it) => ({
       ...it,
-      expiresInDays:
-        it.expiresInDays >= 9999
-          ? it.expiresInDays
-          : Math.max(0, it.expiresInDays + delta),
+      expiryDate: addDaysToExpiryDate(it.expiryDate, delta),
     }));
   };
 
@@ -299,8 +300,8 @@ export default function PantryScreen() {
     Haptics.selectionAsync();
     applyToSelected((it) => ({
       ...it,
-      expiresInDays:
-        it.expiresInDays >= 9999 ? it.expiresInDays : Math.max(0, value),
+      // If it had "no expiry", keep it no expiry (matches your old sentinel behavior)
+      expiryDate: it.expiryDate ? setExpiryDaysFromToday(value) : null,
     }));
   };
 
@@ -398,15 +399,18 @@ export default function PantryScreen() {
     setPantry((prev) => {
       const next = { ...prev };
 
-      expiringSoon.forEach((item) => {
-        next[item.categoryKey] = next[item.categoryKey].map((i) =>
-          i.id === item.id ? { ...i, expiresInDays: i.expiresInDays + 3 } : i
+      expiringSoon.forEach((row) => {
+        next[row.categoryKey] = next[row.categoryKey].map((i) =>
+          i.id === row.id
+            ? { ...i, expiryDate: addDaysToExpiryDate(i.expiryDate, 3) }
+            : i
         );
       });
 
       return next;
     });
   };
+
   const openBulkExpiryMenu = () => setBulkExpiryOpen(true);
   const openBulkMoveMenu = () => setBulkMoveOpen(true);
 
@@ -487,7 +491,7 @@ export default function PantryScreen() {
         const d = getExpiresInDays(item);
 
         if (d >= 9999) continue; // no expiry
-        if (d <= 0) continue; // expired → goes to expiredItems
+        if (d <= 0) continue; // expired → goes to exp iredItems
         if (d > 7) continue; // out of “soon” window
         if (!matchesQuery(item, q)) continue;
 
@@ -872,7 +876,7 @@ export default function PantryScreen() {
                 <View style={styles.sectionListTop}>
                   {items
                     .slice()
-                    .sort((a, b) => a.expiresInDays - b.expiresInDays)
+                    .sort((a, b) => getExpiresInDays(a) - getExpiresInDays(b))
                     .map((item) => (
                       <PantryRow
                         key={`${cat.key}:${item.id}`}
