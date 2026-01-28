@@ -7,6 +7,8 @@ import { usePantryStore } from "@/features/pantry/store";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { Colors, Spacing } from "@/constants/theme";
 import { RECIPES_URL } from "@/config/api";
+import { useRouter } from "expo-router";
+import { useRecipesStore } from "@/features/recipes/store";
 
 type RecipeItem = PantryItem & { categoryKey: CategoryKey };
 
@@ -23,6 +25,9 @@ const ExpiringRecipesScreen: React.FC = () => {
 
   const pantryByCategory = usePantryStore((s) => s.pantry);
   const setPantry = usePantryStore((s) => s.setPantry);
+
+  const router = useRouter();
+  const setResults = useRecipesStore((s) => s.setResults);
 
   const parsedIds = useMemo(() => {
     if (!rawItemIds) return [];
@@ -143,42 +148,45 @@ const ExpiringRecipesScreen: React.FC = () => {
     const title = itemsForRecipes[0].name;
 
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL; // e.g. https://receiptchef.onrender.com
-      if (!baseUrl) throw new Error("Missing EXPO_PUBLIC_API_BASE_URL");
-
-      // Build the endpoint from baseUrl (don’t rely on RECIPES_URL unless you’re sure it’s right)
       const url = `${RECIPES_URL}?title=${encodeURIComponent(title)}`;
-
       console.log("🍳 recipes fetch:", url);
 
       const res = await fetch(url);
-      const raw = await res.text(); // read as text first to avoid JSON parse crash
+      const raw = await res.text();
 
-      // If server woke up slowly or returned an HTML error page, you'll see it here:
       if (!res.ok) {
         console.log("❌ recipes non-200:", res.status, raw.slice(0, 200));
         return;
       }
 
-      // Only parse JSON if it looks like JSON
       const trimmed = raw.trim();
       if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
         console.log("❌ recipes returned non-JSON:", trimmed.slice(0, 200));
         return;
       }
 
-      const json = JSON.parse(trimmed);
+      const json = JSON.parse(trimmed) as {
+        ok: boolean;
+        cached?: boolean;
+        recipes?: any[];
+        error?: string;
+      };
 
       if (!json.ok) {
         console.log("❌ recipes error payload:", json);
         return;
       }
 
-      console.log("✅ recipes:", json.recipes, "cached?", json.cached);
+      const recipes = json.recipes ?? [];
+      console.log("✅ recipes:", recipes.length, "cached?", json.cached);
 
-      // TODO: set state / navigate
-      // setRecipeResults(json.recipes)
-      // router.push({ pathname: "/recipes/results", params: { title } })
+      setResults({
+        queryTitle: title,
+        recipes,
+        cached: !!json.cached,
+      });
+
+      router.push("/recipes/results");
     } catch (err) {
       console.error("❌ Recipe fetch failed:", err);
     }

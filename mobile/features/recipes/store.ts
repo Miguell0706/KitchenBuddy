@@ -1,21 +1,48 @@
-// features/recipes/store.ts
 import { create } from "zustand";
-import type { Recipe } from "./types";
 
-type RecipesState = {
-  saved: Recipe[];
-  addRecipe: (recipe: Recipe) => void;
-  removeRecipe: (id: string) => void;
+export type Recipe = {
+  title: string;
+  ingredients: string;
+  instructions: string;
+  servings?: string;
 };
 
-export const useRecipesStore = create<RecipesState>((set) => ({
+type RecipesState = {
+  queryTitle: string | null;
+  recipes: Recipe[];
+  cached: boolean;
+
+  saved: Recipe[]; // ✅ add this
+  saveRecipe: (r: Recipe) => void; // ✅ add this
+  unsaveRecipe: (title: string) => void;
+
+  setResults: (payload: {
+    queryTitle: string;
+    recipes: Recipe[];
+    cached: boolean;
+  }) => void;
+  clear: () => void;
+};
+
+export const useRecipesStore = create<RecipesState>((set, get) => ({
+  queryTitle: null,
+  recipes: [],
+  cached: false,
+
   saved: [],
-  addRecipe: (recipe) =>
-    set((state) => ({
-      saved: [recipe, ...state.saved.filter((r) => r.id !== recipe.id)],
+  saveRecipe: (r) =>
+    set((prev) => {
+      if (prev.saved.some((x) => x.title === r.title)) return prev;
+      return { ...prev, saved: [r, ...prev.saved] };
+    }),
+  unsaveRecipe: (title) =>
+    set((prev) => ({
+      ...prev,
+      saved: prev.saved.filter((x) => x.title !== title),
     })),
-  removeRecipe: (id) =>
-    set((state) => ({
-      saved: state.saved.filter((r) => r.id !== id),
-    })),
+
+  setResults: ({ queryTitle, recipes, cached }) =>
+    set({ queryTitle, recipes, cached }),
+
+  clear: () => set({ queryTitle: null, recipes: [], cached: false }),
 }));
