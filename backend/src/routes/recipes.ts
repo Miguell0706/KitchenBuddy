@@ -11,7 +11,7 @@ type NinjaRecipe = {
   servings?: string;
 };
 
-const API_NINJA_BASE = "https://api.api-ninjas.com/v1/recipe";
+const API_NINJA_BASE = "https://api.api-ninjas.com/v3/recipe";
 
 // Simple in-memory cache (good enough for launch; replace with Redis/Tigris later)
 const cache = new LRUCache<string, NinjaRecipe[]>({
