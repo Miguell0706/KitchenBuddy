@@ -32,14 +32,18 @@ router.get("/", async (req: Request, res: Response) => {
       return res.status(400).json({ ok: false, error: "MISSING_TITLE" });
 
     // Normalize for caching (helps reduce duplicates)
-    const title = rawTitle.toLowerCase();
-
-    const cached = cache.get(title);
+    const cacheKey =
+      "recipes:title:" +
+      rawTitle.trim().toLowerCase().normalize("NFKC").replace(/\s+/g, " "); // collapse weird spacing
+    console.log("🍳 incoming title:", JSON.stringify(rawTitle));
+    console.log("🍳 cacheKey:", cacheKey, "cacheHit?", cache.has(cacheKey));
+    const cached = cache.get(cacheKey);
     if (cached) {
       return res.json({
         ok: true,
         cached: true,
         title: rawTitle,
+        cacheKey,
         recipes: cached,
       });
     }
@@ -47,6 +51,8 @@ router.get("/", async (req: Request, res: Response) => {
     const key = mustEnv("API_NINJA_KEY");
 
     const url = `${API_NINJA_BASE}?title=${encodeURIComponent(rawTitle)}`;
+    console.log("🍳 upstream url:", url);
+
     const upstream = await fetch(url, {
       headers: { "X-Api-Key": key },
     });
@@ -64,9 +70,15 @@ router.get("/", async (req: Request, res: Response) => {
     const recipes = (await upstream.json()) as NinjaRecipe[];
 
     // Cache even empty arrays (prevents repeated expensive misses)
-    cache.set(title, recipes);
+    cache.set(cacheKey, recipes);
 
-    return res.json({ ok: true, cached: false, title: rawTitle, recipes });
+    return res.json({
+      ok: true,
+      cached: false,
+      title: rawTitle,
+      cacheKey,
+      recipes,
+    });
   } catch (e) {
     console.error("recipes route error:", e);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
