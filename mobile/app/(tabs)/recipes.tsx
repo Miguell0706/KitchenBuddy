@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-
 import { Colors, Spacing } from "@/constants/theme";
 import { useRecipesStore } from "@/features/recipes/store";
 import { usePantryStore } from "@/features/pantry/store";
@@ -32,13 +31,13 @@ const RecipesScreen: React.FC = () => {
 
   const pantryItems = useMemo(
     () => Object.values(pantryByCategory).flat(),
-    [pantryByCategory]
+    [pantryByCategory],
   );
   const isPremium = usePremiumStore((s) => s.isPremium);
 
   const expiringSoon = useMemo(
     () => pantryItems.filter(isExpiringSoon),
-    [pantryItems]
+    [pantryItems],
   );
 
   function handleOpenSaved() {

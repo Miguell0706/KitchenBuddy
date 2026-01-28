@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { canonicalizeRouter } from "./routes/canonicalize.js";
+import recipesRouter from "./routes/recipes.js";
 import { pool } from "./db.js";
 import { initCanonCache } from "./db/initCanonCache.js";
 
@@ -22,6 +23,7 @@ app.use(express.json({ limit: "200kb" }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use("/api/canonicalize-items", canonicalizeRouter);
+app.use("/api/recipes", recipesRouter);
 
 const port = Number(process.env.PORT ?? 8787);
 app.listen(port, () => {

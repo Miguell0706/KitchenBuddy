@@ -6,6 +6,7 @@ import { appendPantryHistory } from "@/features/pantry/history";
 import { usePantryStore } from "@/features/pantry/store";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { Colors, Spacing } from "@/constants/theme";
+import { RECIPES_URL } from "@/config/api";
 
 type RecipeItem = PantryItem & { categoryKey: CategoryKey };
 
@@ -45,7 +46,7 @@ const ExpiringRecipesScreen: React.FC = () => {
             result.push({ ...item, categoryKey });
           }
         }
-      }
+      },
     );
 
     return result;
@@ -62,7 +63,7 @@ const ExpiringRecipesScreen: React.FC = () => {
 
   function toggleRecipeSelection(id: string) {
     setRecipeItemIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   }
 
@@ -126,19 +127,61 @@ const ExpiringRecipesScreen: React.FC = () => {
 
     if (wasSelected) {
       setRecipeItemIds((prev) =>
-        prev.includes(item.id) ? prev : [...prev, item.id]
+        prev.includes(item.id) ? prev : [...prev, item.id],
       );
     }
 
     setUndo(null);
   }
 
-  function handleGenerateRecipes() {
+  async function handleGenerateRecipes() {
     const itemsForRecipes = selectedItems.filter((it) =>
-      recipeItemIds.includes(it.id)
+      recipeItemIds.includes(it.id),
     );
-    console.log("🍲 Generate recipes for:", itemsForRecipes);
-    // TODO: call your recipe API / navigation here
+    if (itemsForRecipes.length === 0) return;
+
+    const title = itemsForRecipes[0].name;
+
+    try {
+      const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL; // e.g. https://receiptchef.onrender.com
+      if (!baseUrl) throw new Error("Missing EXPO_PUBLIC_API_BASE_URL");
+
+      // Build the endpoint from baseUrl (don’t rely on RECIPES_URL unless you’re sure it’s right)
+      const url = `${RECIPES_URL}?title=${encodeURIComponent(title)}`;
+
+      console.log("🍳 recipes fetch:", url);
+
+      const res = await fetch(url);
+      const raw = await res.text(); // read as text first to avoid JSON parse crash
+
+      // If server woke up slowly or returned an HTML error page, you'll see it here:
+      if (!res.ok) {
+        console.log("❌ recipes non-200:", res.status, raw.slice(0, 200));
+        return;
+      }
+
+      // Only parse JSON if it looks like JSON
+      const trimmed = raw.trim();
+      if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
+        console.log("❌ recipes returned non-JSON:", trimmed.slice(0, 200));
+        return;
+      }
+
+      const json = JSON.parse(trimmed);
+
+      if (!json.ok) {
+        console.log("❌ recipes error payload:", json);
+        return;
+      }
+
+      console.log("✅ recipes:", json.recipes, "cached?", json.cached);
+
+      // TODO: set state / navigate
+      // setRecipeResults(json.recipes)
+      // router.push({ pathname: "/recipes/results", params: { title } })
+    } catch (err) {
+      console.error("❌ Recipe fetch failed:", err);
+    }
   }
 
   const hasRecipeItems = recipeItemIds.length > 0;
