@@ -11,7 +11,7 @@ type NinjaRecipe = {
   servings?: string;
 };
 
-const API_NINJAS_BASE = "https://api.api-ninjas.com/v1/recipe";
+const API_NINJA_BASE = "https://api.api-ninjas.com/v1/recipe";
 
 // Simple in-memory cache (good enough for launch; replace with Redis/Tigris later)
 const cache = new LRUCache<string, NinjaRecipe[]>({
@@ -44,9 +44,9 @@ router.get("/", async (req: Request, res: Response) => {
       });
     }
 
-    const key = mustEnv("API_NINJAS_KEY");
+    const key = mustEnv("API_NINJA_KEY");
 
-    const url = `${API_NINJAS_BASE}?title=${encodeURIComponent(rawTitle)}`;
+    const url = `${API_NINJA_BASE}?title=${encodeURIComponent(rawTitle)}`;
     const upstream = await fetch(url, {
       headers: { "X-Api-Key": key },
     });
