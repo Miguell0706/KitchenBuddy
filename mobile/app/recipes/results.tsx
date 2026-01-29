@@ -1,5 +1,12 @@
 import React from "react";
-import { View, Text, FlatList, Pressable, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { useRecipesStore } from "@/features/recipes/store";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 export default function RecipeResultsScreen() {
   const router = useRouter();
   const { queryTitle, recipes, cached } = useRecipesStore();
+  const selectRecipe = useRecipesStore((s) => s.selectRecipe);
 
   return (
     <View style={styles.container}>
@@ -40,24 +48,28 @@ export default function RecipeResultsScreen() {
           contentContainerStyle={{ padding: 16 }}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           renderItem={({ item }) => (
-            <Pressable
+            <TouchableOpacity
+              activeOpacity={0.85}
               style={styles.card}
-              onPress={() =>
-                router.push({
-                  pathname: "/recipes/recipe",
-                  params: { t: item.title }, // placeholder for later
-                })
-              }
+              onPress={() => {
+                selectRecipe(item.title);
+                router.push("/recipes/recipe");
+              }}
             >
               <Text style={styles.cardTitle}>{item.title}</Text>
+
               {!!item.servings && (
                 <Text style={styles.cardMeta}>{item.servings}</Text>
               )}
+
               <Text style={styles.cardBody} numberOfLines={3}>
-                {item.ingredients}
+                {Array.isArray(item.ingredients)
+                  ? item.ingredients.join(", ")
+                  : String(item.ingredients)}
               </Text>
+
               <Text style={styles.cardLink}>View</Text>
-            </Pressable>
+            </TouchableOpacity>
           )}
         />
       )}

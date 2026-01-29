@@ -13,6 +13,9 @@ type RecipesState = {
   recipes: Recipe[];
   cached: boolean;
 
+  selectedTitle: string | null;
+  selectRecipe: (title: string) => void;
+
   saved: Recipe[];
   saveRecipe: (r: Recipe) => void;
   unsaveRecipe: (title: string) => void;
@@ -24,11 +27,13 @@ type RecipesState = {
   }) => void;
   clear: () => void;
 };
-
 export const useRecipesStore = create<RecipesState>((set) => ({
   queryTitle: null,
   recipes: [],
   cached: false,
+
+  selectedTitle: null,
+  selectRecipe: (title) => set({ selectedTitle: title }),
 
   saved: [],
   saveRecipe: (r) =>
@@ -43,7 +48,13 @@ export const useRecipesStore = create<RecipesState>((set) => ({
     })),
 
   setResults: ({ queryTitle, recipes, cached }) =>
-    set({ queryTitle, recipes, cached }),
+    set({ queryTitle, recipes, cached, selectedTitle: null }),
 
-  clear: () => set({ queryTitle: null, recipes: [], cached: false }),
+  clear: () =>
+    set({
+      queryTitle: null,
+      recipes: [],
+      cached: false,
+      selectedTitle: null,
+    }),
 }));
