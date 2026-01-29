@@ -2,9 +2,10 @@ import { create } from "zustand";
 
 export type Recipe = {
   title: string;
-  ingredients: string;
-  instructions: string;
+  ingredients: string[];
+  instructions: string[];
   servings?: string;
+  nutrition?: string;
 };
 
 type RecipesState = {
@@ -12,8 +13,8 @@ type RecipesState = {
   recipes: Recipe[];
   cached: boolean;
 
-  saved: Recipe[]; // ✅ add this
-  saveRecipe: (r: Recipe) => void; // ✅ add this
+  saved: Recipe[];
+  saveRecipe: (r: Recipe) => void;
   unsaveRecipe: (title: string) => void;
 
   setResults: (payload: {
@@ -24,7 +25,7 @@ type RecipesState = {
   clear: () => void;
 };
 
-export const useRecipesStore = create<RecipesState>((set, get) => ({
+export const useRecipesStore = create<RecipesState>((set) => ({
   queryTitle: null,
   recipes: [],
   cached: false,
