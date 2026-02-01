@@ -39,7 +39,10 @@ import { Colors, Spacing } from "@/constants/theme";
 import { BulkExpirySheet } from "@/features/pantry/components/BulkExpirySheet";
 import { BulkMoveSheet } from "@/features/pantry/components/BulkMoveSheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { appendPantryHistory } from "@/features/pantry/history";
+import {
+  appendPantryHistory,
+  removePantryHistoryEntry,
+} from "@/features/pantry/history";
 
 const PANTRY_KEY = "pantry_items_v1";
 
@@ -50,14 +53,17 @@ type ExpiringRow = PantryItem & {
 type Category = (typeof CATEGORIES)[number];
 
 function buildEmptyPantry(): Record<CategoryKey, PantryItem[]> {
-  return ALL_CATEGORY_KEYS.reduce((acc, k) => {
-    acc[k] = [];
-    return acc;
-  }, {} as Record<CategoryKey, PantryItem[]>);
+  return ALL_CATEGORY_KEYS.reduce(
+    (acc, k) => {
+      acc[k] = [];
+      return acc;
+    },
+    {} as Record<CategoryKey, PantryItem[]>,
+  );
 }
 
 function isValidPantryShape(
-  v: unknown
+  v: unknown,
 ): v is Record<CategoryKey, PantryItem[]> {
   if (!v || typeof v !== "object") return false;
   const obj = v as Record<string, unknown>;
@@ -76,6 +82,7 @@ export default function PantryScreen() {
     categoryKey: CategoryKey;
     index: number;
     action: "delete" | "used";
+    historyEntryId?: string;
   } | null>(null);
 
   const [openExpiring, setOpenExpiring] = useState(true);
@@ -110,10 +117,13 @@ export default function PantryScreen() {
   // selected ids per category (so ids can collide across categories safely)
   const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
     () =>
-      ALL_CATEGORY_KEYS.reduce((acc, k) => {
-        acc[k] = new Set<string>();
-        return acc;
-      }, {} as Record<CategoryKey, Set<string>>)
+      ALL_CATEGORY_KEYS.reduce(
+        (acc, k) => {
+          acc[k] = new Set<string>();
+          return acc;
+        },
+        {} as Record<CategoryKey, Set<string>>,
+      ),
   );
 
   // ✅ Search
@@ -184,10 +194,13 @@ export default function PantryScreen() {
 
   const clearSelection = () => {
     setSelected(
-      ALL_CATEGORY_KEYS.reduce((acc, k) => {
-        acc[k] = new Set<string>();
-        return acc;
-      }, {} as Record<CategoryKey, Set<string>>)
+      ALL_CATEGORY_KEYS.reduce(
+        (acc, k) => {
+          acc[k] = new Set<string>();
+          return acc;
+        },
+        {} as Record<CategoryKey, Set<string>>,
+      ),
     );
   };
 
@@ -214,12 +227,26 @@ export default function PantryScreen() {
   };
   async function handleMarkUsed(item: PantryItem) {
     markUsed(item.categoryKey, item.id);
-    await appendPantryHistory(item, "used");
+
+    const historyEntryId = await appendPantryHistory(item, "used");
+
+    setUndo((u) =>
+      u && u.item.id === item.id && u.categoryKey === item.categoryKey
+        ? { ...u, historyEntryId }
+        : u,
+    );
   }
 
   async function handleDelete(item: PantryItem) {
-    deleteItem(item.categoryKey, item.id);
-    await appendPantryHistory(item, "deleted");
+    deleteItem(item.categoryKey, item.id, "delete");
+
+    const historyEntryId = await appendPantryHistory(item, "deleted");
+
+    setUndo((u) =>
+      u && u.item.id === item.id && u.categoryKey === item.categoryKey
+        ? { ...u, historyEntryId }
+        : u,
+    );
   }
 
   const bulkDeleteSelected = () => {
@@ -242,7 +269,7 @@ export default function PantryScreen() {
 
   const applyToSelected = (
     updater: (item: PantryItem, categoryKey: CategoryKey) => PantryItem | null,
-    moveToCategoryKey?: CategoryKey
+    moveToCategoryKey?: CategoryKey,
   ) => {
     setPantry((prev) => {
       const next: Record<CategoryKey, PantryItem[]> = { ...prev };
@@ -335,7 +362,7 @@ export default function PantryScreen() {
   const deleteItem = (
     categoryKey: CategoryKey,
     itemId: string,
-    action: "delete" | "used" = "delete"
+    action: "delete" | "used" = "delete",
   ) => {
     setPantry((prev) => {
       const list = prev[categoryKey];
@@ -355,7 +382,7 @@ export default function PantryScreen() {
     deleteItem(categoryKey, id, "used");
   };
 
-  const undoDelete = () => {
+  const undoDelete = async () => {
     if (!undo) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
@@ -365,6 +392,11 @@ export default function PantryScreen() {
       nextList.splice(undo.index, 0, undo.item);
       return { ...prev, [undo.categoryKey]: nextList };
     });
+
+    // ✅ undo the history record (only if we have the id)
+    if (undo.historyEntryId) {
+      await removePantryHistoryEntry(undo.historyEntryId);
+    }
 
     setUndo(null);
   };
@@ -384,7 +416,7 @@ export default function PantryScreen() {
 
               expiredItems.forEach((item) => {
                 next[item.categoryKey] = next[item.categoryKey].filter(
-                  (i) => i.id !== item.id
+                  (i) => i.id !== item.id,
                 );
               });
 
@@ -392,7 +424,7 @@ export default function PantryScreen() {
             });
           },
         },
-      ]
+      ],
     );
   };
   const remindLater = () => {
@@ -403,7 +435,7 @@ export default function PantryScreen() {
         next[row.categoryKey] = next[row.categoryKey].map((i) =>
           i.id === row.id
             ? { ...i, expiryDate: addDaysToExpiryDate(i.expiryDate, 3) }
-            : i
+            : i,
         );
       });
 
@@ -963,7 +995,7 @@ export default function PantryScreen() {
                     style: "destructive",
                     onPress: bulkDeleteSelected,
                   },
-                ]
+                ],
               );
             }}
             style={styles.bulkActionBtn}

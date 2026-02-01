@@ -9,7 +9,7 @@ type PantryState = {
   pantry: PantryByCategory;
 
   setPantry: (
-    next: PantryByCategory | ((prev: PantryByCategory) => PantryByCategory)
+    next: PantryByCategory | ((prev: PantryByCategory) => PantryByCategory),
   ) => void;
 
   addItem: (categoryKey: CategoryKey, item: PantryItem) => void;
@@ -17,8 +17,12 @@ type PantryState = {
   updateItem: (
     categoryKey: CategoryKey,
     id: string,
-    patch: Partial<PantryItem>
+    patch: Partial<PantryItem>,
   ) => void;
+
+  // ✅ add these
+  deleteItem: (categoryKey: CategoryKey, id: string) => void;
+  markUsed: (categoryKey: CategoryKey, id: string) => void;
 };
 
 const NAME_MAX = 40;
@@ -36,24 +40,18 @@ const normalizeItemPatch = (patch: Partial<PantryItem>) => {
   if (typeof next.name === "string") {
     next.name = next.name.trim().slice(0, NAME_MAX);
   }
-
   if (typeof next.quantity === "string") {
     next.quantity = next.quantity.trim();
   }
-
   return next;
 };
 
 export const usePantryStore = create<PantryState>((set, get) => ({
   pantry: buildEmptyPantry(),
 
-  // 🔐 Single mutation + (later) persistence point
   setPantry: (next) => {
     set((state) => {
       const nextPantry = typeof next === "function" ? next(state.pantry) : next;
-
-      // 👇 This is where you'd persist to AsyncStorage:
-      // await savePantryToStorage(nextPantry);
       return { pantry: nextPantry };
     });
   },
@@ -77,8 +75,26 @@ export const usePantryStore = create<PantryState>((set, get) => ({
     get().setPantry((prev) => ({
       ...prev,
       [categoryKey]: prev[categoryKey].map((i) =>
-        i.id === id ? { ...i, ...normalizedPatch } : i
+        i.id === id ? { ...i, ...normalizedPatch } : i,
       ),
     }));
+  },
+
+  // ✅ NEW: delete
+  deleteItem: (categoryKey, id) => {
+    get().setPantry((prev) => ({
+      ...prev,
+      [categoryKey]: prev[categoryKey].filter((i) => i.id !== id),
+    }));
+  },
+
+  // ✅ NEW: used
+  markUsed: (categoryKey, id) => {
+    get().setPantry((prev) => ({
+      ...prev,
+      [categoryKey]: prev[categoryKey].filter((i) => i.id !== id),
+    }));
+
+    // (If instead you want to keep it and set a flag/date, change logic here.)
   },
 }));

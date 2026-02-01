@@ -2,7 +2,10 @@ import React, { useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { appendPantryHistory } from "@/features/pantry/history";
+import {
+  appendPantryHistory,
+  removePantryHistoryEntry,
+} from "@/features/pantry/history";
 import { usePantryStore } from "@/features/pantry/store";
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
 import { Colors, Spacing } from "@/constants/theme";
@@ -17,6 +20,7 @@ type UndoState = {
   index: number;
   action: "delete" | "used";
   wasSelected: boolean;
+  historyEntryId?: string;
 } | null;
 
 const ExpiringRecipesScreen: React.FC = () => {
@@ -28,7 +32,8 @@ const ExpiringRecipesScreen: React.FC = () => {
 
   const router = useRouter();
   const setResults = useRecipesStore((s) => s.setResults);
-
+  const deleteItem = usePantryStore((s) => s.deleteItem);
+  const markUsed = usePantryStore((s) => s.markUsed);
   const parsedIds = useMemo(() => {
     if (!rawItemIds) return [];
     try {
@@ -72,19 +77,13 @@ const ExpiringRecipesScreen: React.FC = () => {
     );
   }
 
-  function actuallyRemoveItem(item: RecipeItem) {
-    setPantry((prev) => {
-      const list = prev[item.categoryKey] ?? [];
-      const nextList = list.filter((x) => x.id !== item.id);
-      if (nextList.length === list.length) return prev;
-      return { ...prev, [item.categoryKey]: nextList };
-    });
-  }
-
-  function handleDeleteItem(item: RecipeItem) {
+  async function handleDeleteItem(item: RecipeItem) {
     const list = pantryByCategory[item.categoryKey] ?? [];
     const index = list.findIndex((x) => x.id === item.id);
     const wasSelected = recipeItemIds.includes(item.id);
+
+    // ✅ create history entry you can undo
+    const historyEntryId = await appendPantryHistory(item, "deleted");
 
     if (index !== -1) {
       setUndo({
@@ -92,17 +91,22 @@ const ExpiringRecipesScreen: React.FC = () => {
         index,
         action: "delete",
         wasSelected,
+        historyEntryId,
       });
     }
 
-    actuallyRemoveItem(item);
+    // ✅ only delete (do NOT call markUsed here)
+    deleteItem(item.categoryKey, item.id);
+
     setRecipeItemIds((prev) => prev.filter((x) => x !== item.id));
   }
 
-  function handleUseItem(item: RecipeItem) {
+  async function handleUseItem(item: RecipeItem) {
     const list = pantryByCategory[item.categoryKey] ?? [];
     const index = list.findIndex((x) => x.id === item.id);
     const wasSelected = recipeItemIds.includes(item.id);
+
+    const historyEntryId = await appendPantryHistory(item, "used");
 
     if (index !== -1) {
       setUndo({
@@ -110,18 +114,27 @@ const ExpiringRecipesScreen: React.FC = () => {
         index,
         action: "used",
         wasSelected,
+        historyEntryId,
       });
     }
 
-    actuallyRemoveItem(item);
+    // ✅ only markUsed
+    markUsed(item.categoryKey, item.id);
+
     setRecipeItemIds((prev) => prev.filter((x) => x !== item.id));
   }
 
-  function handleUndo() {
+  async function handleUndo() {
     if (!undo) return;
 
-    const { item, index, wasSelected } = undo;
+    const { item, index, wasSelected, historyEntryId } = undo;
 
+    // ✅ remove the history record created by delete/use
+    if (historyEntryId) {
+      await removePantryHistoryEntry(historyEntryId);
+    }
+
+    // ✅ restore item at original index
     setPantry((prev) => {
       const list = prev[item.categoryKey] ?? [];
       const nextList = [...list];
@@ -138,7 +151,6 @@ const ExpiringRecipesScreen: React.FC = () => {
 
     setUndo(null);
   }
-
   async function handleGenerateRecipes() {
     const itemsForRecipes = selectedItems.filter((it) =>
       recipeItemIds.includes(it.id),
