@@ -28,7 +28,8 @@ function makeEntryId() {
 /**
  * Appends a history entry and returns the entryId.
  * Writes are serialized so rapid calls can't overwrite each other.
- */ export function appendPantryHistory(
+ */
+export function appendPantryHistory(
   item: PantryItem,
   action: PantryHistoryAction,
 ): Promise<string> {

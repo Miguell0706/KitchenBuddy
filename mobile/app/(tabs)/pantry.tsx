@@ -253,15 +253,30 @@ export default function PantryScreen() {
     setUndo(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    // 1) Capture the items being deleted (BEFORE setPantry changes state)
+    const deleted: PantryItem[] = [];
+    for (const k of ALL_CATEGORY_KEYS) {
+      console.log(selected[k]);
+      if (selected[k].size === 0) continue;
+      for (const it of pantry[k]) {
+        if (selected[k].has(it.id)) deleted.push(it);
+      }
+    }
+
+    // 2) Update pantry
     setPantry((prev) => {
       const next: Record<CategoryKey, PantryItem[]> = { ...prev };
-
       for (const k of ALL_CATEGORY_KEYS) {
         if (selected[k].size === 0) continue;
         next[k] = prev[k].filter((it) => !selected[k].has(it.id));
       }
       return next;
     });
+
+    // 3) Write history entries (don’t await; your queue handles ordering)
+    for (const it of deleted) {
+      appendPantryHistory(it, "deleted"); // <-- use your actual action string/union value
+    }
 
     clearSelection();
     setBulkMode(false);
@@ -312,7 +327,26 @@ export default function PantryScreen() {
   const bulkMarkUsed = () => {
     setUndo(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // capture items BEFORE mutation
+    const used: PantryItem[] = [];
+    for (const k of ALL_CATEGORY_KEYS) {
+      if (selected[k].size === 0) continue;
+      for (const it of pantry[k]) {
+        if (selected[k].has(it.id)) used.push(it);
+      }
+    }
+
+    // perform the actual update
     applyToSelected(() => null);
+
+    // write history
+    for (const it of used) {
+      appendPantryHistory(it, "used"); // <- use your real action value
+    }
+
+    clearSelection();
+    setBulkMode(false);
   };
 
   const bulkAddExpiryDays = (delta: number) => {
