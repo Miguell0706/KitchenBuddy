@@ -47,14 +47,12 @@ export async function clearFixes() {
   await AsyncStorage.removeItem(FIXES_KEY);
 }
 export type ItemFix = {
-  canonicalName: string;
-  categoryKey: CategoryKey;
-
-  expiryMode: ExpiryMode;
-  expiryDate: string | null; // YYYY-MM-DD or null
-
-  updatedAt: number; // ms epoch
-  timesUsed: number;
+  canonicalName?: string;
+  categoryKey?: CategoryKey;
+  expiryMode: "none" | "days";
+  expiryDays: number | null;
+  timesUsed?: number;
+  updatedAt?: number;
 };
 
 type FixStoreV1 = {
@@ -96,13 +94,13 @@ export function normalizeFixKey(raw: string): string {
 export function makeFixFromFields(args: {
   canonicalName: string;
   categoryKey: CategoryKey;
-  expiryDate: string | null;
+  expiryDays: number | null;
 }): ItemFix {
   return {
     canonicalName: (args.canonicalName ?? "").trim(),
     categoryKey: (args.categoryKey ?? "pantry") as CategoryKey,
-    expiryMode: args.expiryDate ? "date" : "none",
-    expiryDate: args.expiryDate ?? null,
+    expiryMode: typeof args.expiryDays === "number" ? "days" : "none",
+    expiryDays: typeof args.expiryDays === "number" ? args.expiryDays : null,
     updatedAt: now(),
     timesUsed: 0,
   };
@@ -183,7 +181,7 @@ export async function upsertFix(key: string, fix: ItemFix): Promise<void> {
  */
 export async function upsertFixForRaw(
   raw: string,
-  fix: ItemFix
+  fix: ItemFix,
 ): Promise<void> {
   const k = normalizeFixKey(raw);
   if (!k) return;

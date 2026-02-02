@@ -36,21 +36,36 @@ type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
   expiryDate?: string | null; // YYYY-MM-DD
 };
-type CanonResult = {
-  key: string;
-  canonicalName?: string;
-  status: "item" | "not_item" | "unknown";
-  kind: "food" | "household" | "other";
-  ingredientType?: string;
-  confidence?: number;
-  source?: string;
-};
 
 type Baseline = {
   name: string;
   categoryKey: CategoryKey;
   expiryDate: string | null;
 };
+function diffDaysFromNow(iso: string) {
+  const today = new Date();
+  const d = new Date(iso);
+  const ms = d.getTime() - today.getTime();
+  return Math.max(0, Math.round(ms / 86400000));
+}
+function addDaysISO(days: number) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function applyFixExpiry(
+  fix: { expiryMode: "none" | "days"; expiryDays: number | null },
+  fallback: string | null | undefined,
+) {
+  if (fix.expiryMode === "none") return null;
+  if (fix.expiryMode === "days" && fix.expiryDays != null) {
+    return addDaysISO(fix.expiryDays);
+  }
+  return fallback ?? null;
+}
+
 function bestResultByCanon(merged: any[]) {
   const best = new Map<string, any>();
 
@@ -134,13 +149,13 @@ export default function ScanEditScreen() {
       if (rule === "none" || rule == null) return null;
       return isoDateDaysFromNow(rule as number);
     },
-    [expiryOverrides]
+    [expiryOverrides],
   );
 
   const rawText = typeof params.rawText === "string" ? params.rawText : "";
   const { items: parsedItems, report } = useMemo(
     () => parseReceiptNamesOnlyWithReport(rawText, false),
-    [rawText]
+    [rawText],
   );
   const payloadItems = parsedItems.map((i) => ({
     id: i.id,
@@ -149,11 +164,11 @@ export default function ScanEditScreen() {
   const [items, setItems] = useState<DraftScanItem[]>(parsedItems);
   const [showExcluded, setShowExcluded] = useState(false);
   const [expiryPickerForId, setExpiryPickerForId] = useState<string | null>(
-    null
+    null,
   );
 
   const [categoryPickerForId, setCategoryPickerForId] = useState<string | null>(
-    null
+    null,
   );
   const [customDaysText, setCustomDaysText] = useState("");
 
@@ -216,12 +231,12 @@ export default function ScanEditScreen() {
           ...it,
           name: fix.canonicalName || baseName,
           categoryKey: fix.categoryKey ?? baseCategory,
-          expiryDate:
-            fix.expiryMode === "none" ? null : fix.expiryDate ?? baseExpiry,
+          expiryDate: fix.expiryMode === "none" ? null : baseExpiry,
+
           // optionally auto-select fixed items
           selected: true,
         };
-      })
+      }),
     );
   }, [parsedItems]);
 
@@ -251,7 +266,7 @@ export default function ScanEditScreen() {
     Alert.alert(
       "Bad scan",
       report.message ??
-        "This scan is hard to read. Try retaking the photo or cropping tighter."
+        "This scan is hard to read. Try retaking the photo or cropping tighter.",
     );
   }, [report?.quality]); // keep as-is
   useEffect(() => {
@@ -277,12 +292,12 @@ export default function ScanEditScreen() {
               items: payloadItems,
             }),
           },
-          60_000
+          60_000,
         );
         if (!resp.ok) {
           Alert.alert(
             "AI unavailable",
-            "Couldn't improve names this time. You can edit items manually."
+            "Couldn't improve names this time. You can edit items manually.",
           );
           throw new Error(`HTTP ${resp.status}`);
         }
@@ -290,7 +305,7 @@ export default function ScanEditScreen() {
         if (cancelled) return;
         console.log(
           "✅ canonicalize-items response",
-          JSON.stringify(data, null, 2)
+          JSON.stringify(data, null, 2),
         );
 
         const merged = data.merged ?? [];
@@ -307,7 +322,7 @@ export default function ScanEditScreen() {
           merged.map((m: any) => {
             const id = canonId(m);
             return [m.id, bestByCanon.get(id) ?? m.result];
-          })
+          }),
         );
 
         setItems((prev) => {
@@ -318,18 +333,15 @@ export default function ScanEditScreen() {
             const fix = key ? fixesRef.current[key] : undefined;
 
             if (fix) {
-              // respect user fix; still allow excluded logic if you want
               return {
                 ...it,
                 name: fix.canonicalName ?? it.name,
                 categoryKey: fix.categoryKey ?? it.categoryKey,
-                expiryDate:
-                  fix.expiryMode === "none"
-                    ? null
-                    : fix.expiryDate ?? it.expiryDate,
+                expiryDate: applyFixExpiry(fix, it.expiryDate),
                 selected: true,
               };
             }
+
             let r = byId.get(it.id);
             if (!r) return it;
 
@@ -410,7 +422,7 @@ export default function ScanEditScreen() {
           if (errName === "AbortError") {
             Alert.alert(
               "Waking server",
-              "Server is starting up. Try again in a moment."
+              "Server is starting up. Try again in a moment.",
             );
           } else {
             console.log("canonicalize-items failed:", e);
@@ -454,7 +466,7 @@ export default function ScanEditScreen() {
       const fix = makeFixFromFields({
         canonicalName: (it.name ?? "").trim(),
         categoryKey: (it.categoryKey ?? "pantry") as CategoryKey,
-        expiryDate: it.expiryDate ?? null,
+        expiryDays: it.expiryDate ? diffDaysFromNow(it.expiryDate) : null,
       });
 
       await upsertFix(key, fix);
@@ -464,7 +476,7 @@ export default function ScanEditScreen() {
 
   function toggleSelected(id: string) {
     setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, selected: !it.selected } : it))
+      prev.map((it) => (it.id === id ? { ...it, selected: !it.selected } : it)),
     );
   }
 
@@ -483,7 +495,7 @@ export default function ScanEditScreen() {
           categoryKey: nextCategory,
           expiryDate: nextExpiry,
         };
-      })
+      }),
     );
   }
   function openExpiryPicker(id: string) {
@@ -506,8 +518,8 @@ export default function ScanEditScreen() {
               // when category changes, reset expiry to that category default
               expiryDate: defaultExpiryDateForCategory(categoryKey),
             }
-          : it
-      )
+          : it,
+      ),
     );
   }
   function parsePositiveInt(s: string): number | null {
@@ -523,13 +535,13 @@ export default function ScanEditScreen() {
 
   function updateExpiry(id: string, expiryDate: string | null) {
     setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, expiryDate } : it))
+      prev.map((it) => (it.id === id ? { ...it, expiryDate } : it)),
     );
   }
 
   async function addSelectedToPantry() {
     const chosen = items.filter(
-      (i) => i.selected && (i.name ?? "").trim().length > 0
+      (i) => i.selected && (i.name ?? "").trim().length > 0,
     );
     if (chosen.length === 0) {
       Alert.alert("Nothing selected", "Select at least one item to add.");
@@ -538,6 +550,7 @@ export default function ScanEditScreen() {
 
     try {
       const newPantryItems = toPantryItems(chosen); // ✅ only chosen
+      console.log("addSelectedToPantry", { newPantryItems });
       await addPantryItems(newPantryItems); // ✅ writes to AsyncStorage
       await saveFixesForUserEdits(chosen);
 
@@ -832,7 +845,7 @@ export default function ScanEditScreen() {
                   if (opt.kind === "days") {
                     updateExpiry(
                       expiryPickerForId,
-                      isoDateDaysFromNow(opt.days)
+                      isoDateDaysFromNow(opt.days),
                     );
                     closeExpiryPicker();
                     return;

@@ -35,7 +35,7 @@ export default function ScanCacheScreen() {
   useFocusEffect(
     useCallback(() => {
       refresh();
-    }, [refresh])
+    }, [refresh]),
   );
 
   const rows = useMemo(() => {
@@ -43,8 +43,8 @@ export default function ScanCacheScreen() {
       key,
       canonicalName: v.canonicalName ?? "",
       categoryKey: v.categoryKey ?? "",
-      expiryDate: v.expiryDate ?? null,
-      expiryMode: (v as any).expiryMode ?? "",
+      expiryMode: v.expiryMode ?? "none",
+      expiryDays: v.expiryDays ?? null,
       timesUsed: v.timesUsed ?? 0,
       updatedAt: v.updatedAt ?? 0,
     }));
@@ -59,7 +59,7 @@ export default function ScanCacheScreen() {
         r.key.toLowerCase().includes(q) ||
         r.canonicalName.toLowerCase().includes(q) ||
         r.categoryKey.toLowerCase().includes(q) ||
-        String(r.expiryDate ?? "")
+        String(r.expiryDays ?? "")
           .toLowerCase()
           .includes(q)
       );
@@ -217,7 +217,9 @@ export default function ScanCacheScreen() {
               </Text>
               <Text style={TextStyles.body}>
                 {r.canonicalName} • {r.categoryKey}
-                {r.expiryDate ? ` • exp ${r.expiryDate}` : ""}
+                {r.expiryMode === "days" && r.expiryDays != null
+                  ? ` • exp ${r.expiryDays}d`
+                  : ""}
               </Text>
             </View>
           ))
