@@ -5,6 +5,7 @@ import { canonicalizeRouter } from "./routes/canonicalize.js";
 import recipesRouter from "./routes/recipes.js";
 import { pool } from "./db.js";
 import { initCanonCache } from "./db/initCanonCache.js";
+import imagesRouter from "./routes/images.js";
 
 pool
   .query("select 1 as ok")
@@ -19,6 +20,7 @@ pool
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "200kb" }));
+app.use("/api/images", imagesRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 

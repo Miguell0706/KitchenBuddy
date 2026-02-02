@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from "react-native";
 import { useRecipesStore } from "@/features/recipes/store"; // adjust path
 
@@ -25,11 +26,18 @@ export default function RecipeScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Image placeholder */}
-      <View style={styles.imagePlaceholder}>
-        <Text style={styles.imageText}>Recipe image</Text>
-      </View>
-
+      {/* Image */}
+      {recipe.image?.url ? (
+        <Image
+          source={{ uri: recipe.image.url }}
+          style={{ height: 220, width: "100%" }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={styles.imagePlaceholder}>
+          <Text style={styles.imageText}>Recipe image</Text>
+        </View>
+      )}
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>{recipe.title}</Text>
