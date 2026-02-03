@@ -43,11 +43,14 @@ type Baseline = {
   expiryDate: string | null;
 };
 function diffDaysFromNow(iso: string) {
-  const today = new Date();
-  const d = new Date(iso);
-  const ms = d.getTime() - today.getTime();
-  return Math.max(0, Math.round(ms / 86400000));
+  const target = new Date(`${iso}T00:00:00`); // local midnight
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const ms = target.getTime() - today.getTime();
+  return Math.max(0, Math.ceil(ms / 86400000));
 }
+
 function addDaysISO(days: number) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -111,8 +114,14 @@ function bestResultByCanon(merged: any[]) {
 
 function isoDateDaysFromNow(days: number) {
   const d = new Date();
+  d.setHours(0, 0, 0, 0); // normalize to local midnight
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${y}-${m}-${day}`;
 }
 
 function daysUntil(dateStr: string | null | undefined): number {
@@ -216,7 +225,9 @@ export default function ScanEditScreen() {
         // try to apply a stored fix (key off sourceLine ideally)
         const raw = (it.sourceLine ?? baseName).trim();
         const key = normalizeFixKey(raw);
-        const fix = key ? fixesRef.current[key] : undefined;
+        const fix: ItemFix | undefined = key
+          ? fixesRef.current[key]
+          : undefined;
 
         if (!fix) {
           return {
@@ -358,8 +369,7 @@ export default function ScanEditScreen() {
             const autoSelect =
               !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-            const nextCategory =
-              it.categoryKey ?? inferCategoryFromName(nextName ?? "");
+            const nextCategory = inferCategoryFromName(nextName ?? "");
             const nextExpiry =
               it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
 
@@ -485,7 +495,7 @@ export default function ScanEditScreen() {
       prev.map((it) => {
         if (it.id !== id) return it;
 
-        const nextCategory = it.categoryKey ?? inferCategoryFromName(name);
+        const nextCategory = inferCategoryFromName(name);
         const nextExpiry =
           it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
 
@@ -570,12 +580,11 @@ export default function ScanEditScreen() {
     );
   }
   function daysLeftFromIso(iso: string) {
-    // interpret as local midnight to avoid timezone weirdness
     const target = new Date(`${iso}T00:00:00`);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const diffMs = target.getTime() - today.getTime();
-    return Math.round(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
 
   function expiryDisplay(expiryDate?: string | null) {

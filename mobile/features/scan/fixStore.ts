@@ -48,7 +48,7 @@ export async function clearFixes() {
 }
 export type ItemFix = {
   canonicalName?: string;
-  categoryKey?: CategoryKey;
+  categoryKey?: CategoryKey | null;
   expiryMode: "none" | "days";
   expiryDays: number | null;
   timesUsed?: number;
