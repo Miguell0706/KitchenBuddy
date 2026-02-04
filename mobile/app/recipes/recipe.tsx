@@ -10,9 +10,9 @@ import {
 import { useRecipesStore } from "@/features/recipes/store"; // adjust path
 
 export default function RecipeScreen() {
-  const recipe = useRecipesStore((s) => s.recipes[0]); // for now: first result
+  const recipe = useRecipesStore((s) => s.selectedRecipe);
   const saveRecipe = useRecipesStore((s) => s.saveRecipe);
-
+  console.log("Rendering RecipeScreen with recipe:", recipe);
   if (!recipe) {
     return (
       <View style={styles.empty}>

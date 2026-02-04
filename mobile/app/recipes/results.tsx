@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   TouchableOpacity,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useRecipesStore } from "@/features/recipes/store";
@@ -47,30 +48,55 @@ export default function RecipeResultsScreen() {
           keyExtractor={(item, idx) => `${item.title}-${idx}`}
           contentContainerStyle={{ padding: 16 }}
           ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.card}
-              onPress={() => {
-                selectRecipe(item.title);
-                router.push("/recipes/recipe");
-              }}
-            >
-              <Text style={styles.cardTitle}>{item.title}</Text>
+          renderItem={({ item }) => {
+            const imgUrl = item.image?.url ?? "";
+            const avgColor = item.image?.avgColor ?? "#eee";
 
-              {!!item.servings && (
-                <Text style={styles.cardMeta}>{item.servings}</Text>
-              )}
+            return (
+              <TouchableOpacity
+                activeOpacity={0.88}
+                style={styles.card}
+                onPress={() => {
+                  selectRecipe(item.title);
+                  router.push("/recipes/recipe");
+                }}
+              >
+                {/* Left: full-height thumbnail */}
+                <View style={[styles.thumbWrap, { backgroundColor: avgColor }]}>
+                  {imgUrl ? (
+                    <Image
+                      source={{ uri: imgUrl }}
+                      style={styles.thumbImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.thumbPlaceholder}>
+                      <Text style={styles.thumbPlaceholderText}>Recipe</Text>
+                    </View>
+                  )}
+                </View>
 
-              <Text style={styles.cardBody} numberOfLines={3}>
-                {Array.isArray(item.ingredients)
-                  ? item.ingredients.join(", ")
-                  : String(item.ingredients)}
-              </Text>
+                {/* Right: content */}
+                <View style={styles.cardContent}>
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
 
-              <Text style={styles.cardLink}>View</Text>
-            </TouchableOpacity>
-          )}
+                  {!!item.servings && (
+                    <Text style={styles.cardMeta}>{item.servings}</Text>
+                  )}
+
+                  <Text style={styles.cardBody} numberOfLines={3}>
+                    {Array.isArray(item.ingredients)
+                      ? item.ingredients.join(", ")
+                      : String(item.ingredients)}
+                  </Text>
+
+                  <Text style={styles.cardLink}>View</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </View>
@@ -97,12 +123,42 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "#e5e5e5",
+    overflow: "hidden",
+
+    flexDirection: "row",
+    alignItems: "stretch",
+    minHeight: 104, // gives the image some nice presence
   },
+
+  thumbWrap: {
+    width: 110,
+  },
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  thumbPlaceholderText: {
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "700",
+    fontSize: 12,
+    textAlign: "center",
+  },
+
+  cardContent: {
+    flex: 1,
+    padding: 12,
+  },
+
   cardTitle: { fontSize: 16, fontWeight: "700" },
   cardMeta: { fontSize: 12, color: "#666", marginTop: 2 },
-  cardBody: { fontSize: 13, color: "#444", marginTop: 8, lineHeight: 18 },
-  cardLink: { marginTop: 10, fontSize: 13, fontWeight: "700" },
+  cardBody: { fontSize: 13, color: "#444", marginTop: 6, lineHeight: 18 },
+  cardLink: { marginTop: 8, fontSize: 13, fontWeight: "700" },
 });
