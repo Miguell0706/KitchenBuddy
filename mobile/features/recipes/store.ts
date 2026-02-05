@@ -114,7 +114,10 @@ export const useRecipesStore = create<RecipesState>()(
         const state = get();
 
         // already have it?
-        const existing = state.recipes.find((r) => r.title === title);
+        const existing =
+          state.recipes.find((r) => r.title === title) ??
+          state.saved.find((r) => r.title === title);
+
         if (!existing || existing.image?.url) return;
 
         // already fetching it?
@@ -142,7 +145,10 @@ export const useRecipesStore = create<RecipesState>()(
               r.title === title ? { ...r, image: json.image } : r,
             );
 
-            // also update selectedRecipe if it’s the same one
+            const updatedSaved = prev.saved.map((r) =>
+              r.title === title ? { ...r, image: json.image } : r,
+            );
+
             const updatedSelected =
               prev.selectedRecipe?.title === title
                 ? { ...prev.selectedRecipe, image: json.image }
@@ -151,6 +157,7 @@ export const useRecipesStore = create<RecipesState>()(
             return {
               ...prev,
               recipes: updatedRecipes,
+              saved: updatedSaved,
               selectedRecipe: updatedSelected,
             };
           });

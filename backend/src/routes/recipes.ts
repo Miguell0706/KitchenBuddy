@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { Router } from "express";
 import { LRUCache } from "lru-cache";
+import { pool } from "../db.js";
 
 const router = Router();
 
@@ -12,17 +13,18 @@ type NinjaIngredient = {
 
 type NinjaRecipe = {
   title: string;
-  ingredients: NinjaIngredient[]; // v3 shape
-  instructions: string[]; // v3 shape (based on your sample)
+  ingredients: NinjaIngredient[];
+  instructions: string[];
   servings?: string;
   nutrition?: string;
 };
+
 const API_NINJA_BASE = "https://api.api-ninjas.com/v3/recipe";
 
-// Simple in-memory cache (good enough for launch; replace with Redis/Tigris later)
-const cache = new LRUCache<string, NinjaRecipe[]>({
-  max: 2000, // max distinct titles cached
-  ttl: 1000 * 60 * 60 * 24, // 24h TTL
+// In-memory cache (still good for hot queries)
+const cache = new LRUCache<string, any[]>({
+  max: 2000,
+  ttl: 1000 * 60 * 60 * 24, // 24h
 });
 
 function mustEnv(name: string) {
@@ -31,31 +33,69 @@ function mustEnv(name: string) {
   return v;
 }
 
+function normalizeKey(rawTitle: string) {
+  return (
+    "recipes:title:" +
+    rawTitle.trim().toLowerCase().normalize("NFKC").replace(/\s+/g, " ")
+  );
+}
+
 router.get("/", async (req: Request, res: Response) => {
   try {
     const rawTitle = String(req.query.title ?? "").trim();
     if (!rawTitle)
       return res.status(400).json({ ok: false, error: "MISSING_TITLE" });
 
-    // Normalize for caching (helps reduce duplicates)
-    const cacheKey =
-      "recipes:title:" +
-      rawTitle.trim().toLowerCase().normalize("NFKC").replace(/\s+/g, " "); // collapse weird spacing
+    const cacheKey = normalizeKey(rawTitle);
+
     console.log("🍳 incoming title:", JSON.stringify(rawTitle));
-    console.log("🍳 cacheKey:", cacheKey, "cacheHit?", cache.has(cacheKey));
-    const cached = cache.get(cacheKey);
-    if (cached) {
+    console.log("🍳 cacheKey:", cacheKey);
+
+    // ------------------------------------------------------------
+    // 1) Postgres cache (survives deploys/restarts)
+    // ------------------------------------------------------------
+    const dbHit = await pool.query(
+      `select recipes_json
+       from recipe_query_cache
+       where query_title = $1 and expires_at > now()
+       limit 1`,
+      [cacheKey],
+    );
+
+    if (dbHit.rowCount) {
+      const recipes = dbHit.rows[0].recipes_json;
+      // warm in-memory too
+      cache.set(cacheKey, recipes);
+
       return res.json({
         ok: true,
         cached: true,
+        cachedFrom: "postgres",
         title: rawTitle,
         cacheKey,
-        recipes: cached,
+        recipes,
       });
     }
 
-    const key = mustEnv("API_NINJA_KEY");
+    // ------------------------------------------------------------
+    // 2) In-memory cache
+    // ------------------------------------------------------------
+    const mem = cache.get(cacheKey);
+    if (mem) {
+      return res.json({
+        ok: true,
+        cached: true,
+        cachedFrom: "memory",
+        title: rawTitle,
+        cacheKey,
+        recipes: mem,
+      });
+    }
 
+    // ------------------------------------------------------------
+    // 3) Upstream fetch
+    // ------------------------------------------------------------
+    const key = mustEnv("API_NINJA_KEY");
     const url = `${API_NINJA_BASE}?title=${encodeURIComponent(rawTitle)}`;
     console.log("🍳 upstream url:", url);
 
@@ -92,7 +132,6 @@ router.get("/", async (req: Request, res: Response) => {
       title: r.title,
       servings: r.servings,
       nutrition: r.nutrition,
-      // ✅ app-friendly strings
       ingredients: Array.isArray(r.ingredients)
         ? r.ingredients.map(formatIngredient)
         : typeof r.ingredients === "string"
@@ -111,11 +150,26 @@ router.get("/", async (req: Request, res: Response) => {
           : [],
     }));
 
-    // Cache even empty arrays (prevents repeated expensive misses)
+    // ------------------------------------------------------------
+    // Write caches
+    // ------------------------------------------------------------
     cache.set(cacheKey, normalized as any);
+
+    // Postgres TTL: 7 days (tweak as you want)
+    await pool.query(
+      `insert into recipe_query_cache (query_title, recipes_json, expires_at, updated_at)
+       values ($1, $2::jsonb, now() + interval '7 days', now())
+       on conflict (query_title)
+       do update set recipes_json = excluded.recipes_json,
+                     expires_at = excluded.expires_at,
+                     updated_at = now()`,
+      [cacheKey, JSON.stringify(normalized)],
+    );
+
     return res.json({
       ok: true,
       cached: false,
+      cachedFrom: null,
       title: rawTitle,
       cacheKey,
       recipes: normalized,
