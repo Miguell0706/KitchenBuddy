@@ -29,8 +29,20 @@ export async function initCanonCache() {
 
     create index if not exists recipe_query_cache_expires_at_idx
       on recipe_query_cache (expires_at);
+
+    -- NEW
+    create table if not exists recipe_image_cache (
+      title text primary key,
+      image_json jsonb not null,
+      expires_at timestamptz not null,
+      updated_at timestamptz not null default now()
+    );
+
+    create index if not exists recipe_image_cache_expires_at_idx
+      on recipe_image_cache (expires_at);
   `);
 
   console.log("✅ canon_cache table ready");
   console.log("✅ recipe_query_cache table ready");
+  console.log("✅ recipe_image_cache table ready");
 }
