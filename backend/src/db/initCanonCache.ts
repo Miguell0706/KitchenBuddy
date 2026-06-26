@@ -5,6 +5,7 @@ export async function initCanonCache() {
     create table if not exists canon_cache (
       key text primary key,
       canonical_name text not null,
+      recipe_search_name text not null default '',
       status text not null check (status in ('item','not_item','unknown')),
       kind text not null check (kind in ('food','household','other')),
       ingredient_type text not null check (ingredient_type in ('ingredient','product','ambiguous')),
@@ -13,7 +14,9 @@ export async function initCanonCache() {
       updated_at timestamptz not null default now(),
       hits bigint not null default 0
     );
-
+    alter table canon_cache
+    add column if not exists recipe_search_name text not null default '';
+    
     create index if not exists canon_cache_hits_idx
       on canon_cache (hits desc);
 
@@ -40,7 +43,20 @@ export async function initCanonCache() {
 
     create index if not exists recipe_image_cache_expires_at_idx
       on recipe_image_cache (expires_at);
-  `);
+
+    create table if not exists ingredient_image_cache (
+      canonical_name text primary key,
+      image_json jsonb not null,
+      updated_at timestamptz not null default now(),
+      hits bigint not null default 0
+    );
+
+    create index if not exists ingredient_image_cache_hits_idx
+      on ingredient_image_cache (hits desc);
+
+    create index if not exists ingredient_image_cache_updated_at_idx
+      on ingredient_image_cache (updated_at desc);
+      `);
 
   console.log("✅ canon_cache table ready");
   console.log("✅ recipe_query_cache table ready");

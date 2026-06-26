@@ -17,7 +17,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`LLM_TIMEOUT_${ms}ms`)), ms)
+      setTimeout(() => reject(new Error(`LLM_TIMEOUT_${ms}ms`)), ms),
     ),
   ]);
 }
@@ -30,14 +30,37 @@ function isDefinitelyNonGrocery(text: string): boolean {
   // obvious numeric/promo-ish
   if (/^\d+(\.\d+)?$/.test(s)) return true;
   if (/^(for|save|deal)\b/.test(s)) return true;
-  if (/\b(\$|lb|oz|ea|each)\b/.test(s) && !/[a-z]/i.test(s.replace(/\b(lb|oz|ea|each)\b/gi, ""))) return true;
+  if (
+    /\b(\$|lb|oz|ea|each)\b/.test(s) &&
+    !/[a-z]/i.test(s.replace(/\b(lb|oz|ea|each)\b/gi, ""))
+  )
+    return true;
 
   // non-grocery retail keywords (expand over time)
   const badWords = [
-    "ruck", "rucksack", "backpack", "notebook", "binder", "pen", "pencil",
-    "folder", "paper clips", "staples", "tape", "scissors",
-    "toy", "game", "shirt", "pants", "shoes", "sock",
-    "headphones", "charger", "cable", "battery", "flashlight",
+    "ruck",
+    "rucksack",
+    "backpack",
+    "notebook",
+    "binder",
+    "pen",
+    "pencil",
+    "folder",
+    "paper clips",
+    "staples",
+    "tape",
+    "scissors",
+    "toy",
+    "game",
+    "shirt",
+    "pants",
+    "shoes",
+    "sock",
+    "headphones",
+    "charger",
+    "cable",
+    "battery",
+    "flashlight",
   ];
 
   return badWords.some((w) => s.includes(w));
@@ -55,10 +78,12 @@ type Out = {
   rows: Array<{
     key: string;
     canonicalName: string;
+    recipeSearchName: string;
     status: "item" | "not_item" | "unknown";
     kind: "food" | "household" | "other";
     ingredientType: "ingredient" | "product" | "ambiguous";
     confidence: number; // 0..1
+    
   }>;
 };
 
@@ -93,6 +118,21 @@ canonicalName rules:
 - rows.length MUST equal input length.
 - Do not add extra fields.
 
+recipeSearchName rules:
+- Only meaningful when status="item" and kind="food".
+- If not a food item, recipeSearchName MUST be "".
+- This should be optimized for recipe searches.
+- Remove grocery descriptors that hurt recipe search.
+- Preserve important ingredient identity.
+
+Examples:
+Broccoli Crowns -> Broccoli
+Organic Broccoli Crowns -> Broccoli
+Red Onion -> Red Onion
+Romaine Hearts -> Romaine Lettuce
+Tyson BBQ Chicken Chunks -> BBQ Chicken
+Potato Wedges -> Potato Wedges
+
 confidence rules:
 - Use a real scale:
   0.95-1.0 = obvious
@@ -119,22 +159,37 @@ function safeParseJson(raw: string) {
 }
 
 function validate(rowsIn: InputRow[], out: any) {
-  if (!out || typeof out !== "object" || !Array.isArray(out.rows)) throw new Error("Bad response shape");
+  if (!out || typeof out !== "object" || !Array.isArray(out.rows))
+    throw new Error("Bad response shape");
   if (out.rows.length !== rowsIn.length) throw new Error("Row length mismatch");
 
   const inKeys = new Set(rowsIn.map((r) => r.key));
 
   for (const r of out.rows) {
-    if (typeof r?.key !== "string" || !inKeys.has(r.key)) throw new Error(`Bad/missing key: ${r?.key}`);
-    if (typeof r.canonicalName !== "string") throw new Error("canonicalName missing");
-    if (!["item", "not_item", "unknown"].includes(r.status)) throw new Error("status invalid");
-    if (!["food", "household", "other"].includes(r.kind)) throw new Error("kind invalid");
-    if (!["ingredient", "product", "ambiguous"].includes(r.ingredientType)) throw new Error("ingredientType invalid");
-    if (typeof r.confidence !== "number" || r.confidence < 0 || r.confidence > 1) throw new Error("confidence invalid");
+    if (typeof r?.key !== "string" || !inKeys.has(r.key))
+      throw new Error(`Bad/missing key: ${r?.key}`);
+    if (typeof r.canonicalName !== "string")
+      throw new Error("canonicalName missing");
+    if (typeof r.recipeSearchName !== "string")
+      throw new Error("recipeSearchName missing");
+    if (!["item", "not_item", "unknown"].includes(r.status))
+      throw new Error("status invalid");
+    if (!["food", "household", "other"].includes(r.kind))
+      throw new Error("kind invalid");
+    if (!["ingredient", "product", "ambiguous"].includes(r.ingredientType))
+      throw new Error("ingredientType invalid");
+    if (
+      typeof r.confidence !== "number" ||
+      r.confidence < 0 ||
+      r.confidence > 1
+    )
+      throw new Error("confidence invalid");
   }
 }
 
-export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[]> {
+export async function geminiCanonicalize(
+  rows: InputRow[],
+): Promise<CanonResult[]> {
   // 1) Prefilter obvious non-grocery items (skip LLM)
   const now = Date.now();
   const pre: CanonResult[] = [];
@@ -144,7 +199,8 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
     if (isDefinitelyNonGrocery(row.text)) {
       pre.push({
         key: row.key,
-        canonicalName: "",        // ✅
+        canonicalName: "",
+        recipeSearchName: "",
         status: "not_item",
         kind: "other",
         ingredientType: "ambiguous",
@@ -179,7 +235,7 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
       model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       }),
-      TIMEOUT_MS
+      TIMEOUT_MS,
     );
 
     const raw = resp.response.text();
@@ -189,6 +245,7 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
     const llmResults: CanonResult[] = parsed.rows.map((r: any) => ({
       key: r.key,
       canonicalName: r.canonicalName,
+      recipeSearchName: r.recipeSearchName,
       status: r.status,
       kind: r.kind,
       ingredientType: r.ingredientType,
@@ -209,6 +266,7 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
         return {
           key: row.key,
           canonicalName: row.text,
+          recipeSearchName: "",
           status: "unknown",
           kind: "other",
           ingredientType: "ambiguous",
@@ -230,6 +288,7 @@ export async function geminiCanonicalize(rows: InputRow[]): Promise<CanonResult[
     const fallbackLLM: CanonResult[] = toLLM.map((row) => ({
       key: row.key,
       canonicalName: row.text,
+      recipeSearchName: "",
       status: "unknown",
       kind: "other",
       ingredientType: "ambiguous",

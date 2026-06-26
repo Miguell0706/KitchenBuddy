@@ -5,7 +5,7 @@ import { cacheGetMany, cacheUpsertMany } from "../lib/cache.js";
 import { enforceReceiptCaps, rateLimitDaily } from "../lib/guards.js";
 import type { CanonResult } from "../lib/types.js";
 import { geminiCanonicalize } from "../llm/geminiCanonicalize.js";
-
+import { getOrCreateIngredientImage } from "../lib/ingredientImage.js";
 export const canonicalizeRouter = express.Router();
 const PROMPT_VERSION = "v3";
 
@@ -15,10 +15,10 @@ const BodySchema = z.object({
     .array(
       z.object({
         id: z.string().min(1),
-        text: z.string().min(1) // this should already be your cleaned final item text
-      })
+        text: z.string().min(1), // this should already be your cleaned final item text
+      }),
     )
-    .min(1)
+    .min(1),
 });
 
 canonicalizeRouter.post("/", async (req, res) => {
@@ -36,8 +36,6 @@ canonicalizeRouter.post("/", async (req, res) => {
       const rawKey = normalizeKey(it.text);
       return { ...it, rawKey, key: `${PROMPT_VERSION}:${rawKey}` };
     });
-
-
 
     // 1) Cache lookup (unique keys)
     const keys = Array.from(new Set(items.map((i) => i.key)));
@@ -90,7 +88,7 @@ canonicalizeRouter.post("/", async (req, res) => {
           (r) =>
             r.status === "not_item" ||
             (r.status === "item" && (r.confidence ?? 0) >= 0.75) ||
-            (r.status === "unknown" && (r.confidence ?? 0) >= 0.9)
+            (r.status === "unknown" && (r.confidence ?? 0) >= 0.9),
         );
 
         if (toCache.length > 0) {
@@ -110,15 +108,30 @@ canonicalizeRouter.post("/", async (req, res) => {
     const freshByKey: Record<string, CanonResult> = {};
     for (const r of newRows) freshByKey[r.key] = r;
 
-    const merged = items.map((it) => {
-      const hit = freshByKey[it.key] ?? cached[it.key] ?? null;
-      return {
-        id: it.id,
-        text: it.text,
-        key: it.key,
-        result: hit,
-      };
-    });
+    const merged = await Promise.all(
+      items.map(async (it) => {
+        const hit = freshByKey[it.key] ?? cached[it.key] ?? null;
+
+        let ingredientImage = null;
+
+        if (
+          hit &&
+          hit.status === "item" &&
+          hit.kind === "food" &&
+          hit.canonicalName
+        ) {
+          ingredientImage = await getOrCreateIngredientImage(hit.canonicalName);
+        }
+
+        return {
+          id: it.id,
+          text: it.text,
+          key: it.key,
+          result: hit,
+          ingredientImage,
+        };
+      }),
+    );
 
     return res.json({
       ok: true,

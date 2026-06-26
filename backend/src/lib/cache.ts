@@ -1,7 +1,9 @@
 import { pool } from "../db.js";
 import type { CanonResult } from "./types.js";
 
-export async function cacheGetMany(keys: string[]): Promise<Record<string, CanonResult>> {
+export async function cacheGetMany(
+  keys: string[],
+): Promise<Record<string, CanonResult>> {
   if (keys.length === 0) return {};
 
   const { rows } = await pool.query(
@@ -9,6 +11,7 @@ export async function cacheGetMany(keys: string[]): Promise<Record<string, Canon
     select
       key,
       canonical_name as "canonicalName",
+      recipe_search_name as "recipeSearchName",
       status,
       kind,
       ingredient_type as "ingredientType",
@@ -18,23 +21,26 @@ export async function cacheGetMany(keys: string[]): Promise<Record<string, Canon
     from canon_cache
     where key = any($1::text[])
     `,
-    [keys]
+    [keys],
   );
 
   // optional: bump hit counter (non-blocking)
   const hitKeys = rows.map((r) => r.key);
-    if (hitKeys.length) {
-      pool.query(
+  if (hitKeys.length) {
+    pool
+      .query(
         `update canon_cache set hits = hits + 1 where key = any($1::text[])`,
-        [hitKeys]
-      ).catch(() => {});
-    }
+        [hitKeys],
+      )
+      .catch(() => {});
+  }
 
   const out: Record<string, CanonResult> = {};
   for (const r of rows) {
     out[r.key] = {
       key: r.key,
       canonicalName: r.canonicalName,
+      recipeSearchName: r.recipeSearchName,
       status: r.status,
       kind: r.kind,
       ingredientType: r.ingredientType,
@@ -53,11 +59,12 @@ export async function cacheUpsertMany(rows: CanonResult[]): Promise<void> {
   // (This keeps it simple and reliable.)
   const q = `
     insert into canon_cache
-      (key, canonical_name, status, kind, ingredient_type, confidence, source, updated_at)
+      (key, canonical_name, recipe_search_name, status, kind, ingredient_type, confidence, source, updated_at)
     values
-      ($1, $2, $3, $4, $5, $6, $7, now())
+      ($1, $2, $3, $4, $5, $6, $7, $8, now())
     on conflict (key) do update set
       canonical_name = excluded.canonical_name,
+      recipe_search_name = excluded.recipe_search_name,
       status = excluded.status,
       kind = excluded.kind,
       ingredient_type = excluded.ingredient_type,
@@ -70,6 +77,7 @@ export async function cacheUpsertMany(rows: CanonResult[]): Promise<void> {
     await pool.query(q, [
       r.key,
       r.canonicalName,
+      r.recipeSearchName,
       r.status,
       r.kind,
       r.ingredientType,

@@ -1,6 +1,7 @@
 export type CanonResult = {
   key: string;
   canonicalName: string;
+  recipeSearchName: string;
   status: "item" | "not_item" | "unknown";
   kind: "food" | "household" | "other";
   ingredientType: "ingredient" | "product" | "ambiguous";
