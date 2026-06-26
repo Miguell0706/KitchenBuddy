@@ -91,3 +91,4 @@ router.get("/ingredient-image", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
+export default router;
