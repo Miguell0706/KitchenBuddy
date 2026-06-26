@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Image,
   TextInput,
   View,
 } from "react-native";
@@ -35,6 +36,10 @@ import {
 type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
   expiryDate?: string | null; // YYYY-MM-DD
+  ingredientImage?: {
+    url: string;
+    avgColor: string;
+  };
 };
 
 type Baseline = {
@@ -329,12 +334,7 @@ export default function ScanEditScreen() {
           return `key:${(r.key ?? m?.key ?? "").trim()}`;
         };
 
-        const byId = new Map<string, any>(
-          merged.map((m: any) => {
-            const id = canonId(m);
-            return [m.id, bestByCanon.get(id) ?? m.result];
-          }),
-        );
+        const byId = new Map<string, any>(merged.map((m: any) => [m.id, m]));
 
         setItems((prev) => {
           // PASS 1: apply canonical results to each row
@@ -353,9 +353,11 @@ export default function ScanEditScreen() {
               };
             }
 
-            let r = byId.get(it.id);
-            if (!r) return it;
+            const mergedItem = byId.get(it.id);
+            if (!mergedItem) return it;
 
+            const r = bestByCanon.get(canonId(mergedItem)) ?? mergedItem.result;
+            if (!r) return it;
             const excluded =
               r.status === "not_item" ||
               r.kind === "other" ||
@@ -380,6 +382,7 @@ export default function ScanEditScreen() {
               expiryDate: nextExpiry,
               selected: excluded ? false : autoSelect || it.selected,
               excluded,
+              ingredientImage: mergedItem.ingredientImage ?? null,
             };
           });
 
@@ -419,6 +422,8 @@ export default function ScanEditScreen() {
               excluded: keep.excluded && other.excluded, // only excluded if both excluded
               categoryKey: keep.categoryKey ?? other.categoryKey,
               expiryDate: keep.expiryDate ?? other.expiryDate,
+              ingredientImage:
+                keep.ingredientImage ?? other.ingredientImage ?? null,
               // sourceLine: keep.sourceLine ?? other.sourceLine, // only if this exists on your type
             });
           }
@@ -671,7 +676,15 @@ export default function ScanEditScreen() {
                 style={[styles.row, !it.selected && styles.rowOff]}
               >
                 <View style={styles.editRow}>
-                  {/* Only THIS area toggles selection */}
+                  {it.ingredientImage?.url ? (
+                    <Image
+                      source={{ uri: it.ingredientImage.url }}
+                      style={styles.ingredientImage}
+                    />
+                  ) : (
+                    <View style={styles.ingredientImagePlaceholder} />
+                  )}
+
                   <Pressable
                     onPress={() => toggleSelected(it.id)}
                     style={styles.rowTop}
@@ -680,6 +693,7 @@ export default function ScanEditScreen() {
                       {it.selected ? "☑" : "☐"}
                     </Text>
                   </Pressable>
+
                   <TextInput
                     value={it.name ?? ""}
                     onChangeText={(t) => updateName(it.id, t)}
@@ -1092,5 +1106,18 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "800",
+  },
+  ingredientImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#eee",
+  },
+
+  ingredientImagePlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.06)",
   },
 });
