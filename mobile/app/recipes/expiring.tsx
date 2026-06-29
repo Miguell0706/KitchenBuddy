@@ -157,8 +157,8 @@ const ExpiringRecipesScreen: React.FC = () => {
     );
     if (itemsForRecipes.length === 0) return;
 
-    const title = itemsForRecipes[0].name;
-
+    const title =
+      itemsForRecipes[0].recipeSearchName?.trim() || itemsForRecipes[0].name;
     try {
       const url = `${RECIPES_URL}?title=${encodeURIComponent(title)}`;
       console.log("🍳 recipes fetch:", url);

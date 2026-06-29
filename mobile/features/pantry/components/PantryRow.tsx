@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Image } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -43,6 +43,20 @@ export function PantryRow({
         <View style={Layout.rowBetween}>
           <View style={[Layout.row, { flex: 1, paddingRight: Spacing.md }]}>
             {bulkMode && <BulkCheckbox checked={checked} />}
+
+            {item.ingredientImage?.url ? (
+              <Image
+                source={{ uri: item.ingredientImage.url }}
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 12,
+                  marginRight: Spacing.sm,
+                  backgroundColor:
+                    item.ingredientImage.avgColor ?? "rgba(0,0,0,0.06)",
+                }}
+              />
+            ) : null}
 
             <View style={{ flex: 1 }}>
               <Text style={TextStyles.body}>{item.name}</Text>

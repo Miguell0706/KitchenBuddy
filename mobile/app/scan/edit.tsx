@@ -35,7 +35,8 @@ import {
 } from "@/features/scan/parsing";
 type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
-  expiryDate?: string | null; // YYYY-MM-DD
+  expiryDate?: string | null;
+  recipeSearchName?: string;
   ingredientImage?: {
     url: string;
     avgColor: string;
@@ -141,10 +142,12 @@ function toPantryItems(drafts: DraftScanItem[]): PantryItem[] {
   return drafts.map((d) => ({
     id: d.id,
     name: (d.name ?? d.sourceLine ?? "").trim(),
+    recipeSearchName:
+      d.recipeSearchName ?? (d.name ?? d.sourceLine ?? "").trim(),
     quantity: "1",
-    expiresInDays: daysUntil(d.expiryDate),
     expiryDate: d.expiryDate ?? null,
     categoryKey: d.categoryKey ?? "pantry",
+    ingredientImage: d.ingredientImage ?? null,
   }));
 }
 
@@ -374,10 +377,10 @@ export default function ScanEditScreen() {
             const nextCategory = inferCategoryFromName(nextName ?? "");
             const nextExpiry =
               it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
-
             return {
               ...it,
               name: nextName,
+              recipeSearchName: r.recipeSearchName?.trim() || nextName,
               categoryKey: nextCategory,
               expiryDate: nextExpiry,
               selected: excluded ? false : autoSelect || it.selected,
@@ -422,6 +425,7 @@ export default function ScanEditScreen() {
               excluded: keep.excluded && other.excluded, // only excluded if both excluded
               categoryKey: keep.categoryKey ?? other.categoryKey,
               expiryDate: keep.expiryDate ?? other.expiryDate,
+              recipeSearchName: keep.recipeSearchName ?? other.recipeSearchName,
               ingredientImage:
                 keep.ingredientImage ?? other.ingredientImage ?? null,
               // sourceLine: keep.sourceLine ?? other.sourceLine, // only if this exists on your type
