@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, router } from "expo-router";
@@ -19,7 +21,7 @@ import {
 export default function ScanHistoryScreen() {
   const [entries, setEntries] = useState<ScanHistoryEntry[]>([]);
   const insets = useSafeAreaInsets();
-
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const load = useCallback(async () => {
     const data = await getScanHistory();
     setEntries(data);
@@ -28,7 +30,7 @@ export default function ScanHistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   function formatDate(iso: string) {
@@ -51,13 +53,19 @@ export default function ScanHistoryScreen() {
   }
 
   const renderItem = ({ item }: { item: ScanHistoryEntry }) => (
-    <View style={styles.card}>
-      <Image source={{ uri: item.imageUri }} style={styles.thumbnail} />
-      <View style={styles.info}>
-        <Text style={styles.title}>Receipt</Text>
-        <Text style={styles.meta}>{formatDate(item.createdAt)}</Text>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => setSelectedImageUri(item.imageUri)}
+    >
+      <View style={styles.card}>
+        <Image source={{ uri: item.imageUri }} style={styles.thumbnail} />
+
+        <View style={styles.info}>
+          <Text style={styles.title}>Receipt</Text>
+          <Text style={styles.meta}>{formatDate(item.createdAt)}</Text>
+        </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -96,6 +104,25 @@ export default function ScanHistoryScreen() {
           contentContainerStyle={styles.listContent}
         />
       )}
+      <Modal
+        visible={!!selectedImageUri}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedImageUri(null)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setSelectedImageUri(null)}
+        >
+          {selectedImageUri ? (
+            <Image
+              source={{ uri: selectedImageUri }}
+              style={styles.fullImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -165,5 +192,16 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: "#666",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  fullImage: {
+    width: "100%",
+    height: "100%",
   },
 });
