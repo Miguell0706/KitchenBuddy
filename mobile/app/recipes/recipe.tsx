@@ -2,13 +2,14 @@ import React from "react";
 import {
   View,
   Text,
+  Alert,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   Image,
 } from "react-native";
 import { useRecipesStore } from "@/features/recipes/store"; // adjust path
-
+import Toast from "react-native-toast-message";
 export default function RecipeScreen() {
   const recipe = useRecipesStore((s) => s.selectedRecipe);
   const saveRecipe = useRecipesStore((s) => s.saveRecipe);
@@ -47,7 +48,17 @@ export default function RecipeScreen() {
 
         <TouchableOpacity
           style={styles.saveButton}
-          onPress={() => saveRecipe(recipe)}
+          onPress={() => {
+            saveRecipe(recipe);
+
+            Toast.show({
+              type: "success",
+              text1: "Recipe saved",
+              text2: recipe.title,
+              position: "bottom",
+              visibilityTime: 2500,
+            });
+          }}
         >
           <Text style={styles.saveText}>Save recipe</Text>
         </TouchableOpacity>

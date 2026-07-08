@@ -8,10 +8,11 @@ import {
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
-
+import Toast from "react-native-toast-message";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSettingsStore } from "@/features/settings/store"; // 👈 import settings store
+import { toastConfig } from "@/components/kitchentoast";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -70,7 +71,10 @@ export default function RootLayout() {
             options={{ presentation: "modal", title: "Add item" }}
           />
         </Stack>
+
         <StatusBar style="auto" />
+
+        <Toast config={toastConfig} />
       </ThemeProvider>
     </GestureHandlerRootView>
   );
