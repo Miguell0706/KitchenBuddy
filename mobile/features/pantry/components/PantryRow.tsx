@@ -14,10 +14,10 @@ type Props = {
   isSearching: boolean;
   checked: boolean;
   onPressUsed: () => void;
-  onToggleSelect: () => void; // bulk only
-  onPressEdit: () => void; // normal tap
-  onPressDelete: () => void; // confirm
-  onSwipeDelete: () => void; // instant
+  onToggleSelect: () => void;
+  onPressEdit: () => void;
+  onPressDelete: () => void;
+  onSwipeDelete: () => void;
 };
 
 export function PantryRow({
@@ -40,8 +40,8 @@ export function PantryRow({
       }}
     >
       <View style={CardStyles.pantryItem}>
-        <View style={Layout.rowBetween}>
-          <View style={[Layout.row, { flex: 1, paddingRight: Spacing.md }]}>
+        <View style={[Layout.rowBetween, { alignItems: "flex-start" }]}>
+          <View style={[Layout.row, { flex: 1, paddingRight: Spacing.sm }]}>
             {bulkMode && <BulkCheckbox checked={checked} />}
 
             {item.ingredientImage?.url ? (
@@ -59,16 +59,33 @@ export function PantryRow({
             ) : null}
 
             <View style={{ flex: 1 }}>
-              <Text style={TextStyles.body}>{item.name}</Text>
-              <Text style={TextStyles.small}>
+              <Text style={TextStyles.body} numberOfLines={2}>
+                {item.name}
+              </Text>
+
+              <Text style={TextStyles.small} numberOfLines={1}>
                 {item.categoryLabel
                   ? `${item.quantity} • ${item.categoryLabel}`
                   : item.quantity}
               </Text>
+
+              <View
+                style={[
+                  badge.container as any,
+                  {
+                    alignSelf: "flex-start",
+                    marginTop: 6,
+                  },
+                ]}
+              >
+                <Text style={badge.text as any} numberOfLines={1}>
+                  {badge.label}
+                </Text>
+              </View>
             </View>
           </View>
 
-          <View style={Layout.row}>
+          <View style={[Layout.row, { flexShrink: 0 }]}>
             {!bulkMode && (
               <UsedButton
                 onPress={() => {
@@ -78,10 +95,6 @@ export function PantryRow({
               />
             )}
 
-            <View style={badge.container as any}>
-              <Text style={badge.text as any}>{badge.label}</Text>
-            </View>
-
             {!bulkMode && <InlineDeleteButton onDelete={onPressDelete} />}
           </View>
         </View>
@@ -89,7 +102,6 @@ export function PantryRow({
     </Pressable>
   );
 
-  // no swipe while bulk-selecting or searching
   if (bulkMode) return content;
 
   return (
@@ -110,7 +122,6 @@ export function PantryRow({
   );
 }
 
-/* ───────────────── helpers ───────────────── */
 function UsedButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
@@ -121,7 +132,7 @@ function UsedButton({ onPress }: { onPress: () => void }) {
       }}
       hitSlop={6}
       style={({ pressed }) => ({
-        paddingHorizontal: 10,
+        paddingHorizontal: 8,
         paddingVertical: 6,
         borderRadius: 999,
         marginRight: Spacing.sm,
@@ -170,14 +181,12 @@ function InlineDeleteButton({ onDelete }: { onDelete: () => void }) {
   return (
     <Pressable
       onPress={(e) => {
-        // prevent also triggering the row Pressable (edit/select)
         // @ts-ignore
         e?.stopPropagation?.();
         onDelete();
       }}
       hitSlop={6}
       style={({ pressed }) => ({
-        marginLeft: Spacing.sm,
         padding: 6,
         borderRadius: 10,
         backgroundColor: pressed
@@ -187,7 +196,7 @@ function InlineDeleteButton({ onDelete }: { onDelete: () => void }) {
         alignItems: "center",
       })}
     >
-      <Ionicons name="trash-outline" size={16} color={"rgb(170, 20, 20)"} />
+      <Ionicons name="trash-outline" size={16} color="rgb(170, 20, 20)" />
     </Pressable>
   );
 }
@@ -216,7 +225,7 @@ function DeleteAction({ onDelete }: { onDelete: () => void }) {
           borderColor: "rgba(170, 20, 20, 0.20)",
         }}
       >
-        <Ionicons name="trash-outline" size={20} color={"rgb(170, 20, 20)"} />
+        <Ionicons name="trash-outline" size={20} color="rgb(170, 20, 20)" />
         <Text
           style={[
             TextStyles.small,

@@ -1,12 +1,32 @@
-import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors, Spacing } from "@/constants/theme";
 import { CardStyles, Layout, TextStyles } from "@/constants/styles";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CORRECTIONS_KEY } from "@/features/scan/correctionStorage";
-
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
+import {
+  loadReminderSettings,
+  saveReminderSettings,
+  type ReminderSettings,
+} from "@/features/reminders/reminderStorage";
+import {
+  scheduleWaterReminders,
+  cancelWaterReminders,
+} from "@/features/reminders/waterReminders";
 async function debugDumpCorrections() {
   const raw = await AsyncStorage.getItem(CORRECTIONS_KEY);
 }
@@ -120,25 +140,162 @@ export default function SettingsScreen() {
   // water options
   type WaterCadence = "2h" | "3h" | "4h";
   const [waterCadence, setWaterCadence] = useState<WaterCadence>("3h");
-  const [waterStartHour, setWaterStartHour] = useState(9); // 9am
-  const [waterEndHour, setWaterEndHour] = useState(21); // 9pm
+  const [waterStartMinutes, setWaterStartMinutes] = useState(9 * 60);
+  const [waterEndMinutes, setWaterEndMinutes] = useState(21 * 60);
 
+  const [showIOSStartPicker, setShowIOSStartPicker] = useState(false);
+  const [showIOSEndPicker, setShowIOSEndPicker] = useState(false);
+  useEffect(() => {
+    async function loadSettings() {
+      const settings = await loadReminderSettings();
+
+      setExpiryReminders(settings.expiryReminders);
+      setExpiryLead(settings.expiryLead);
+
+      setWaterReminders(settings.waterReminders);
+      setWaterCadence(settings.waterCadence);
+      setWaterStartMinutes(settings.waterStartMinutes);
+      setWaterEndMinutes(settings.waterEndMinutes);
+    }
+
+    loadSettings();
+  }, []);
+  async function updateReminderSettings(changes: Partial<ReminderSettings>) {
+    const updated: ReminderSettings = {
+      expiryReminders,
+      expiryLead,
+      waterReminders,
+      waterCadence,
+      waterStartMinutes,
+      waterEndMinutes,
+      ...changes,
+    };
+
+    setExpiryReminders(updated.expiryReminders);
+    setExpiryLead(updated.expiryLead);
+
+    setWaterReminders(updated.waterReminders);
+    setWaterCadence(updated.waterCadence);
+    setWaterStartMinutes(updated.waterStartMinutes);
+    setWaterEndMinutes(updated.waterEndMinutes);
+    await saveReminderSettings(updated);
+
+    if (updated.waterReminders) {
+      await scheduleWaterReminders(updated);
+    } else {
+      await cancelWaterReminders();
+    }
+  }
+  async function selectStartTime(selectedDate?: Date) {
+    if (!selectedDate) return;
+
+    const selectedMinutes = dateToMinutes(selectedDate);
+
+    if (selectedMinutes >= waterEndMinutes) {
+      Alert.alert(
+        "Invalid reminder window",
+        "The start time must be earlier than the end time.",
+      );
+      return;
+    }
+
+    await updateReminderSettings({
+      waterStartMinutes: selectedMinutes,
+    });
+  }
+
+  async function selectEndTime(selectedDate?: Date) {
+    if (!selectedDate) return;
+
+    const selectedMinutes = dateToMinutes(selectedDate);
+
+    if (selectedMinutes <= waterStartMinutes) {
+      Alert.alert(
+        "Invalid reminder window",
+        "The end time must be later than the start time.",
+      );
+      return;
+    }
+
+    await updateReminderSettings({
+      waterEndMinutes: selectedMinutes,
+    });
+  }
+
+  function openStartTimePicker() {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: minutesToDate(waterStartMinutes),
+        mode: "time",
+        is24Hour: false,
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type === "set") {
+            void selectStartTime(selectedDate);
+          }
+        },
+      });
+
+      return;
+    }
+
+    setShowIOSStartPicker(true);
+  }
+
+  function openEndTimePicker() {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: minutesToDate(waterEndMinutes),
+        mode: "time",
+        is24Hour: false,
+        onChange: (event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (event.type === "set") {
+            void selectEndTime(selectedDate);
+          }
+        },
+      });
+
+      return;
+    }
+
+    setShowIOSEndPicker(true);
+  }
   const waterSubtitle = useMemo(() => {
-    if (!waterReminders) return "Optional reminders to drink water";
+    if (!waterReminders) {
+      return "Optional reminders to drink water";
+    }
+
     const every =
       waterCadence === "2h"
         ? "Every 2 hours"
         : waterCadence === "3h"
-        ? "Every 3 hours"
-        : "Every 4 hours";
-    const fmt = (h: number) => {
-      const suffix = h >= 12 ? "PM" : "AM";
-      const hr = ((h + 11) % 12) + 1;
-      return `${hr}${suffix}`;
-    };
-    return `${every} • ${fmt(waterStartHour)}–${fmt(waterEndHour)}`;
-  }, [waterReminders, waterCadence, waterStartHour, waterEndHour]);
+          ? "Every 3 hours"
+          : "Every 4 hours";
 
+    return `${every} • ${formatTime(waterStartMinutes)}–${formatTime(
+      waterEndMinutes,
+    )}`;
+  }, [waterReminders, waterCadence, waterStartMinutes, waterEndMinutes]);
+  function minutesToDate(minutes: number) {
+    const date = new Date();
+
+    date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+    return date;
+  }
+
+  function dateToMinutes(date: Date) {
+    return date.getHours() * 60 + date.getMinutes();
+  }
+
+  function formatTime(minutes: number) {
+    const hour24 = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+
+    const suffix = hour24 >= 12 ? "PM" : "AM";
+    const hour12 = ((hour24 + 11) % 12) + 1;
+
+    return `${hour12}:${minute.toString().padStart(2, "0")} ${suffix}`;
+  }
   return (
     <ScrollView
       style={{ backgroundColor: Colors.background }}
@@ -163,7 +320,9 @@ export default function SettingsScreen() {
           right={
             <Switch
               value={expiryReminders}
-              onValueChange={setExpiryReminders}
+              onValueChange={(value) =>
+                updateReminderSettings({ expiryReminders: value })
+              }
               trackColor={{
                 true: "rgba(0,0,0,0.25)",
                 false: "rgba(0,0,0,0.15)",
@@ -179,19 +338,19 @@ export default function SettingsScreen() {
               title="3 days before"
               subtitle="Best if you shop weekly"
               selected={expiryLead === "3d"}
-              onPress={() => setExpiryLead("3d")}
+              onPress={() => updateReminderSettings({ expiryLead: "3d" })}
             />
             <RadioRow
               title="2 days before"
               subtitle="More time to plan"
               selected={expiryLead === "2d"}
-              onPress={() => setExpiryLead("2d")}
+              onPress={() => updateReminderSettings({ expiryLead: "2d" })}
             />
             <RadioRow
               title="1 day before"
               subtitle="Good default"
               selected={expiryLead === "1d"}
-              onPress={() => setExpiryLead("1d")}
+              onPress={() => updateReminderSettings({ expiryLead: "1d" })}
             />
           </View>
         ) : null}
@@ -203,7 +362,11 @@ export default function SettingsScreen() {
           right={
             <Switch
               value={waterReminders}
-              onValueChange={setWaterReminders}
+              onValueChange={(value) =>
+                updateReminderSettings({
+                  waterReminders: value,
+                })
+              }
               trackColor={{
                 true: "rgba(0,0,0,0.25)",
                 false: "rgba(0,0,0,0.15)",
@@ -219,48 +382,82 @@ export default function SettingsScreen() {
               title="Every 2 hours"
               subtitle="More frequent nudges"
               selected={waterCadence === "2h"}
-              onPress={() => setWaterCadence("2h")}
+              onPress={() =>
+                updateReminderSettings({
+                  waterCadence: "2h",
+                })
+              }
             />
+
             <RadioRow
               title="Every 3 hours"
               subtitle="Balanced"
               selected={waterCadence === "3h"}
-              onPress={() => setWaterCadence("3h")}
+              onPress={() =>
+                updateReminderSettings({
+                  waterCadence: "3h",
+                })
+              }
             />
+
             <RadioRow
               title="Every 4 hours"
               subtitle="Light reminders"
               selected={waterCadence === "4h"}
-              onPress={() => setWaterCadence("4h")}
+              onPress={() =>
+                updateReminderSettings({
+                  waterCadence: "4h",
+                })
+              }
             />
 
             <Row
-              icon="time-outline"
-              title="Reminder window"
-              subtitle="Set active hours"
-              onPress={() =>
-                Alert.alert(
-                  "Reminder window",
-                  "Placeholder.\n\nLater you can add a time picker:\n• Start hour\n• End hour"
-                )
-              }
+              icon="play-outline"
+              title="Start time"
+              subtitle="First possible reminder"
+              onPress={openStartTimePicker}
               right={
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Text
                     style={[
                       TextStyles.small,
-                      { marginRight: 6, color: Colors.textLight },
+                      {
+                        marginRight: 6,
+                        color: Colors.textLight,
+                      },
                     ]}
                   >
-                    {(() => {
-                      const fmt = (h: number) => {
-                        const suffix = h >= 12 ? "PM" : "AM";
-                        const hr = ((h + 11) % 12) + 1;
-                        return `${hr}${suffix}`;
-                      };
-                      return `${fmt(waterStartHour)}–${fmt(waterEndHour)}`;
-                    })()}
+                    {formatTime(waterStartMinutes)}
                   </Text>
+
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={Colors.textLight}
+                  />
+                </View>
+              }
+            />
+
+            <Row
+              icon="stop-outline"
+              title="End time"
+              subtitle="No reminders after this time"
+              onPress={openEndTimePicker}
+              right={
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text
+                    style={[
+                      TextStyles.small,
+                      {
+                        marginRight: 6,
+                        color: Colors.textLight,
+                      },
+                    ]}
+                  >
+                    {formatTime(waterEndMinutes)}
+                  </Text>
+
                   <Ionicons
                     name="chevron-forward"
                     size={18}
@@ -273,6 +470,7 @@ export default function SettingsScreen() {
         ) : null}
       </View>
 
+      {/* Scan */}
       {/* Scan */}
       <View style={[CardStyles.subtle, { marginBottom: Spacing.md }]}>
         <Text style={TextStyles.sectionTitle}>Scan</Text>
@@ -350,7 +548,7 @@ export default function SettingsScreen() {
           onPress={() =>
             Alert.alert(
               "Premium",
-              "Premium features coming soon.\n\n• Smart grocery list\n• 2x Scan rewards\n• Unlimited scans per day\n• 10/recipes a day\n"
+              "Premium features coming soon.\n\n• Smart grocery list\n• 2x Scan rewards\n• Unlimited scans per day\n• 10/recipes a day\n",
             )
           }
           right={
@@ -379,7 +577,7 @@ export default function SettingsScreen() {
           onPress={() =>
             Alert.alert(
               "Analytics",
-              "Premium feature (placeholder).\n\nExamples:\n• $ saved estimate\n• Items trashed vs used\n• Top expiring categories\n• Correction rate over time"
+              "Premium feature (placeholder).\n\nExamples:\n• $ saved estimate\n• Items trashed vs used\n• Top expiring categories\n• Correction rate over time",
             )
           }
           right={
