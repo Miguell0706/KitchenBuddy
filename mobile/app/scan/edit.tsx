@@ -33,6 +33,7 @@ import {
   parseReceiptNamesOnlyWithReport,
   type ParsedItem,
 } from "@/features/scan/parsing";
+import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
 type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
   expiryDate?: string | null;
@@ -568,14 +569,25 @@ export default function ScanEditScreen() {
     }
 
     try {
-      const newPantryItems = toPantryItems(chosen); // ✅ only chosen
-      console.log("addSelectedToPantry", { newPantryItems });
-      await addPantryItems(newPantryItems); // ✅ writes to AsyncStorage
+      const newPantryItems = toPantryItems(chosen);
+
+      console.log("addSelectedToPantry", {
+        newPantryItems,
+      });
+
+      // Save items to pantry
+      await addPantryItems(newPantryItems);
+
+      // Rebuild expiry notifications using updated pantry
+      await syncExpiryReminders();
+
+      // Save user's scan corrections
       await saveFixesForUserEdits(chosen);
 
       router.replace("/(tabs)/pantry");
     } catch (e) {
       console.log("addSelectedToPantry failed:", e);
+
       Alert.alert("Save failed", "Couldn't save pantry items. Try again.");
     }
   }

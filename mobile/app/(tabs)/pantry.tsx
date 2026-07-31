@@ -33,6 +33,7 @@ import {
   addDaysToExpiryDate,
 } from "@/features/pantry/utils";
 import { usePantryStore } from "@/features/pantry/store";
+import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
 import { Colors, Spacing } from "@/constants/theme";
@@ -87,7 +88,7 @@ export default function PantryScreen() {
 
   const [openExpiring, setOpenExpiring] = useState(true);
   const [openExpired, setOpenExpired] = useState(true);
-
+  const [pantryLoaded, setPantryLoaded] = useState(false);
   const [openCategories, setOpenCategories] = useState<
     Record<CategoryKey, boolean>
   >({
@@ -140,7 +141,10 @@ export default function PantryScreen() {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(PANTRY_KEY);
-        if (!raw) return;
+
+        if (!raw) {
+          return;
+        }
 
         const parsed = JSON.parse(raw);
 
@@ -149,12 +153,14 @@ export default function PantryScreen() {
         if (isValidPantryShape(parsed)) {
           setPantry(parsed);
         } else {
-          // fallback: if corrupted/old shape, don't crash
           setPantry(buildEmptyPantry());
         }
       } catch (e) {
-        // if JSON parse fails or storage fails, keep current pantry
         console.warn("Failed to load pantry from storage", e);
+      } finally {
+        if (!cancelled) {
+          setPantryLoaded(true);
+        }
       }
     })();
 
@@ -165,19 +171,22 @@ export default function PantryScreen() {
 
   // -------------------- ✅ AsyncStorage (save) --------------------
   useEffect(() => {
-    // small debounce to avoid hammering storage during fast edits
+    if (!pantryLoaded) return;
+
     const t = setTimeout(() => {
-      (async () => {
+      void (async () => {
         try {
           await AsyncStorage.setItem(PANTRY_KEY, JSON.stringify(pantry));
+
+          await syncExpiryReminders();
         } catch (e) {
-          console.warn("Failed to save pantry to storage", e);
+          console.warn("Failed to save pantry or sync expiry reminders", e);
         }
       })();
     }, 250);
 
     return () => clearTimeout(t);
-  }, [pantry]);
+  }, [pantry, pantryLoaded]);
 
   // -------------------- Undo timer --------------------
   useEffect(() => {

@@ -27,6 +27,10 @@ import {
   scheduleWaterReminders,
   cancelWaterReminders,
 } from "@/features/reminders/waterReminders";
+import {
+  scheduleExpiryReminders,
+  cancelExpiryReminders,
+} from "@/features/reminders/expiryReminders";
 async function debugDumpCorrections() {
   const raw = await AsyncStorage.getItem(CORRECTIONS_KEY);
 }
@@ -131,10 +135,19 @@ export default function SettingsScreen() {
   const [expiryLead, setExpiryLead] = useState<ExpiryLead>("1d");
 
   const expirySubtitle = useMemo(() => {
-    if (!expiryReminders) return "Get reminded before food expires";
-    if (expiryLead === "3d") return "Notify me 3 days before expiry";
-    if (expiryLead === "1d") return "Notify me 1 day before expiry";
-    return "Notify me 12 hours before expiry";
+    if (!expiryReminders) {
+      return "Get reminded before food expires";
+    }
+
+    if (expiryLead === "3d") {
+      return "Notify me 3 days before expiry";
+    }
+
+    if (expiryLead === "2d") {
+      return "Notify me 2 days before expiry";
+    }
+
+    return "Notify me 1 day before expiry";
   }, [expiryReminders, expiryLead]);
 
   // water options
@@ -178,12 +191,32 @@ export default function SettingsScreen() {
     setWaterCadence(updated.waterCadence);
     setWaterStartMinutes(updated.waterStartMinutes);
     setWaterEndMinutes(updated.waterEndMinutes);
+
     await saveReminderSettings(updated);
 
-    if (updated.waterReminders) {
-      await scheduleWaterReminders(updated);
-    } else {
-      await cancelWaterReminders();
+    const waterChanged =
+      "waterReminders" in changes ||
+      "waterCadence" in changes ||
+      "waterStartMinutes" in changes ||
+      "waterEndMinutes" in changes;
+
+    const expiryChanged =
+      "expiryReminders" in changes || "expiryLead" in changes;
+
+    if (waterChanged) {
+      if (updated.waterReminders) {
+        await scheduleWaterReminders(updated);
+      } else {
+        await cancelWaterReminders();
+      }
+    }
+
+    if (expiryChanged) {
+      if (updated.expiryReminders) {
+        await scheduleExpiryReminders(updated);
+      } else {
+        await cancelExpiryReminders();
+      }
     }
   }
   async function selectStartTime(selectedDate?: Date) {

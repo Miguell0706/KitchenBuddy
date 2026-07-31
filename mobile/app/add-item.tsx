@@ -23,6 +23,8 @@ import type { CategoryKey } from "@/features/pantry/types";
 import { useDefaultExpiry } from "@/features/pantry/useDefaultExpiry";
 import { usePantryStore } from "@/features/pantry/store";
 import * as Haptics from "expo-haptics";
+import { savePantry } from "@/features/pantry/storage";
+import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
 
 const CATEGORIES: {
   key: CategoryKey;
@@ -69,10 +71,16 @@ const EXPIRY_PRESETS: ExpiryPreset[] = [
 ];
 function isoDateDaysFromNow(days: number): string {
   const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
 
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
 function Chip({
   label,
   selected,
@@ -120,7 +128,7 @@ export default function AddItemModal() {
 
   const categoryLabel = useMemo(
     () => CATEGORIES.find((c) => c.key === category)?.label ?? "Category",
-    [category]
+    [category],
   );
   useEffect(() => {
     if (expiryMode !== "auto") return;
@@ -156,8 +164,8 @@ export default function AddItemModal() {
         return defaultExpiry === "none"
           ? "none"
           : typeof defaultExpiry === "number"
-          ? defaultExpiry
-          : 7; // extra safety fallback
+            ? defaultExpiry
+            : 7; // extra safety fallback
       }
       return n;
     }
@@ -165,7 +173,7 @@ export default function AddItemModal() {
     // "auto" → use overridable default
     return defaultExpiry;
   }, [expiryMode, presetDays, customDays, defaultExpiry]);
-  const onSave = () => {
+  const onSave = async () => {
     const normalizedName = name.trim().slice(0, 40);
 
     if (!normalizedName) {
@@ -175,21 +183,35 @@ export default function AddItemModal() {
 
     const quantity = qty.trim() || "1";
     const expiresInDays = computedExpiry === "none" ? 9999 : computedExpiry;
+
     const expiryDate =
       computedExpiry === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
-    addItem(category, {
-      id: `${Date.now()}`,
-      name: normalizedName,
-      quantity,
-      categoryKey: category,
-      expiryDate,
-      expiresInDays,
-      // 🔧 add any other required fields if TS still complains
-    });
+    try {
+      addItem(category, {
+        id: `${Date.now()}`,
+        name: normalizedName,
+        quantity,
+        categoryKey: category,
+        expiryDate,
+      });
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    close();
+      const updatedPantry = usePantryStore.getState().pantry;
+
+      await savePantry(updatedPantry);
+      await syncExpiryReminders();
+
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      close();
+    } catch (error) {
+      console.error("Failed to add pantry item:", error);
+
+      Alert.alert(
+        "Save failed",
+        "The item could not be saved. Please try again.",
+      );
+    }
   };
 
   return (
@@ -322,8 +344,8 @@ export default function AddItemModal() {
                 {expiryMode === "auto"
                   ? "Auto"
                   : computedExpiry === "none"
-                  ? "No expiry"
-                  : `${computedExpiry} days`}
+                    ? "No expiry"
+                    : `${computedExpiry} days`}
               </Text>
             </View>
 
