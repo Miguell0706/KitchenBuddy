@@ -1,12 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-
 import { loadPantry } from "@/features/pantry/storage";
 import type { PantryItem } from "@/features/pantry/types";
 import type { ReminderSettings } from "./reminderStorage";
 
 const EXPIRY_NOTIFICATION_IDS_KEY = "expiry_notification_ids_v1";
-
+let expirySyncInProgress: Promise<void> | null = null;
 function parseLocalExpiryDate(dateString: string): Date | null {
   const dateOnly = dateString.slice(0, 10);
   const parts = dateOnly.split("-").map(Number);
@@ -71,7 +70,22 @@ export async function cancelExpiryReminders(): Promise<void> {
   }
 }
 
-export async function scheduleExpiryReminders(
+export function scheduleExpiryReminders(
+  settings: ReminderSettings,
+): Promise<void> {
+  if (expirySyncInProgress) {
+    console.log("Expiry reminder sync already running; reusing it.");
+    return expirySyncInProgress;
+  }
+
+  expirySyncInProgress = runScheduleExpiryReminders(settings).finally(() => {
+    expirySyncInProgress = null;
+  });
+
+  return expirySyncInProgress;
+}
+
+async function runScheduleExpiryReminders(
   settings: ReminderSettings,
 ): Promise<void> {
   console.log("Scheduling expiry reminders with settings:", {
@@ -115,7 +129,6 @@ export async function scheduleExpiryReminders(
 
       notificationDate.setDate(notificationDate.getDate() - leadDays);
 
-      // Notification fires at 9:00 AM local device time.
       notificationDate.setHours(9, 0, 0, 0);
 
       if (notificationDate <= now) {
@@ -138,7 +151,6 @@ export async function scheduleExpiryReminders(
             expiryDate: item.expiryDate,
           },
         },
-
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: notificationDate,
