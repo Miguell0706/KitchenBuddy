@@ -692,17 +692,25 @@ export async function geminiCanonicalize(
 
     // 3) Normalize Gemini results into our food-only contract
     const llmResults: CanonResult[] = parsed.rows.map((r: any) => {
+      const confidence = Math.max(0, Math.min(1, Number(r.confidence ?? 0)));
+
       const isFoodItem = r.status === "item" && r.kind === "food";
 
-      if (!isFoodItem) {
+      const isLowConfidenceFood = isFoodItem && confidence < 0.7;
+
+      if (!isFoodItem || isLowConfidenceFood) {
         return {
           key: r.key,
           canonicalName: "",
           recipeSearchName: "",
-          status: r.status === "unknown" ? "unknown" : "not_item",
+          status: isLowConfidenceFood
+            ? "unknown"
+            : r.status === "unknown"
+              ? "unknown"
+              : "not_item",
           kind: "other",
           ingredientType: "ambiguous",
-          confidence: Math.max(0, Math.min(1, Number(r.confidence ?? 0))),
+          confidence,
           updatedAt,
           source: "llm",
         } satisfies CanonResult;
@@ -715,7 +723,7 @@ export async function geminiCanonicalize(
         status: "item",
         kind: "food",
         ingredientType: r.ingredientType,
-        confidence: Math.max(0, Math.min(1, Number(r.confidence ?? 0))),
+        confidence,
         updatedAt,
         source: "llm",
       } satisfies CanonResult;
