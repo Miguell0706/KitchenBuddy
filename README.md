@@ -8,8 +8,8 @@ The goal is to make it effortless to know **what you own, what’s expiring soon
 
 ## ✨ Current Features (WIP)
 
-- 📦 **Pantry tracking** with collapsible categories  
-- ⏰ **Expiration awareness** (expired / expiring soon / safe)  
+- 📦 **Pantry tracking** with collapsible categories
+- ⏰ **Expiration awareness** (expired / expiring soon / safe)
 - 🗂️ Clear organization across food and household categories:
   - Produce
   - Meat & Seafood
@@ -22,8 +22,6 @@ The goal is to make it effortless to know **what you own, what’s expiring soon
   - Frozen
   - Snacks & Sweets
   - Pet Food
-  - Household (Non-food)
-  - Supplements & Vitamins
 - 📱 Mobile-first UI built with React Native + Expo
 
 ---
@@ -42,12 +40,14 @@ The goal is to make it effortless to know **what you own, what’s expiring soon
 ## 🛠️ Tech Stack
 
 **Mobile**
+
 - React Native (Expo)
 - TypeScript
 - Expo Router
 - Ionicons
 
 **Project Structure**
+
 - Monorepo layout
 - `mobile/` → Expo app
 - `backend/` → planned (Node.js)
@@ -57,6 +57,7 @@ The goal is to make it effortless to know **what you own, what’s expiring soon
 ## 🧠 Philosophy
 
 KitchenBuddy focuses on:
+
 - **Low friction** (fast, simple interactions)
 - **Clarity** (you should know what’s going bad at a glance)
 - **Practical value** (real households, real groceries)

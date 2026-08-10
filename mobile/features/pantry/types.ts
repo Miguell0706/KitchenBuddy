@@ -16,7 +16,7 @@ export type PantryItem = {
   recipeSearchName?: string;
 
   ingredientType?: "ingredient" | "product" | "ambiguous";
-  kind?: "food" | "household" | "other";
+  kind?: "food" | "other";
   confidence?: number;
 
   quantity: string;
@@ -24,6 +24,7 @@ export type PantryItem = {
   expiryDate: string | null;
   ingredientImage?: IngredientImage | null;
 };
+
 export type CategoryKey =
   | "produce"
   | "meatSeafood"
@@ -35,6 +36,4 @@ export type CategoryKey =
   | "beverages"
   | "frozen"
   | "snacks"
-  | "pet"
-  | "household"
-  | "supplements";
+  | "pet";

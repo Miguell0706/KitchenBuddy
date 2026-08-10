@@ -362,10 +362,7 @@ export default function ScanEditScreen() {
 
             const r = bestByCanon.get(canonId(mergedItem)) ?? mergedItem.result;
             if (!r) return it;
-            const excluded =
-              r.status === "not_item" ||
-              r.kind === "other" ||
-              r.kind === "household";
+            const excluded = r.status === "not_item" || r.kind === "other";
 
             const nextName =
               r.status === "item" && r.canonicalName?.trim()

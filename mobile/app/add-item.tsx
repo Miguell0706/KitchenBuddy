@@ -42,12 +42,6 @@ const CATEGORIES: {
   { key: "frozen", label: "Frozen", icon: "snow-outline" },
   { key: "snacks", label: "Snacks & Sweets", icon: "ice-cream-outline" },
   { key: "pet", label: "Pet Food", icon: "paw-outline" },
-  { key: "household", label: "Household (Non-food)", icon: "home-outline" },
-  {
-    key: "supplements",
-    label: "Supplements / Vitamins",
-    icon: "medkit-outline",
-  },
 ];
 // Reasonable defaults if user doesn’t choose anything
 

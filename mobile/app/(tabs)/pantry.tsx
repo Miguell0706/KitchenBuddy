@@ -103,8 +103,6 @@ export default function PantryScreen() {
     beverages: false,
     snacks: false,
     pet: false,
-    household: false,
-    supplements: false,
   });
 
   const [bulkMode, setBulkMode] = useState(false);

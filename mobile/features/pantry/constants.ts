@@ -19,13 +19,8 @@ export const CATEGORIES: Category[] = [
   { key: "frozen", label: "Frozen", icon: "snow-outline" },
   { key: "snacks", label: "Snacks & Sweets", icon: "ice-cream-outline" },
   { key: "pet", label: "Pet Food", icon: "paw-outline" },
-  { key: "household", label: "Household (Non-food)", icon: "home-outline" },
-  {
-    key: "supplements",
-    label: "Supplements / Vitamins",
-    icon: "medkit-outline",
-  },
 ];
+
 export const CATEGORY_DEFAULT_EXPIRY: Record<CategoryKey, number | "none"> = {
   produce: 14,
   meatSeafood: 7,
@@ -37,16 +32,17 @@ export const CATEGORY_DEFAULT_EXPIRY: Record<CategoryKey, number | "none"> = {
   beverages: 50,
   frozen: 90,
   snacks: 60,
-  pet: 60, // 👈 add
-  household: 9999,
-  supplements: 180, // 👈 add
+  pet: 60,
 };
 
 export const ALL_CATEGORY_KEYS: CategoryKey[] = CATEGORIES.map((c) => c.key);
 
 export function setAllCategories(open: boolean): Record<CategoryKey, boolean> {
-  return ALL_CATEGORY_KEYS.reduce((acc, key) => {
-    acc[key] = open;
-    return acc;
-  }, {} as Record<CategoryKey, boolean>);
+  return ALL_CATEGORY_KEYS.reduce(
+    (acc, key) => {
+      acc[key] = open;
+      return acc;
+    },
+    {} as Record<CategoryKey, boolean>,
+  );
 }

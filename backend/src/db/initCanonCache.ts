@@ -7,16 +7,35 @@ export async function initCanonCache() {
       canonical_name text not null,
       recipe_search_name text not null default '',
       status text not null check (status in ('item','not_item','unknown')),
-      kind text not null check (kind in ('food','household','other')),
+      kind text not null check (kind in ('food','other')),
       ingredient_type text not null check (ingredient_type in ('ingredient','product','ambiguous')),
       confidence real not null,
       source text not null,
       updated_at timestamptz not null default now(),
       hits bigint not null default 0
     );
+
     alter table canon_cache
-    add column if not exists recipe_search_name text not null default '';
-    
+      add column if not exists recipe_search_name text not null default '';
+
+    -- Convert old household cache entries before tightening the constraint
+    update canon_cache
+    set
+      kind = 'other',
+      status = 'not_item',
+      canonical_name = '',
+      recipe_search_name = '',
+      ingredient_type = 'ambiguous'
+    where kind = 'household';
+
+    -- Replace the old kind constraint if this table already existed
+    alter table canon_cache
+      drop constraint if exists canon_cache_kind_check;
+
+    alter table canon_cache
+      add constraint canon_cache_kind_check
+      check (kind in ('food','other'));
+
     create index if not exists canon_cache_hits_idx
       on canon_cache (hits desc);
 
@@ -33,7 +52,6 @@ export async function initCanonCache() {
     create index if not exists recipe_query_cache_expires_at_idx
       on recipe_query_cache (expires_at);
 
-    -- NEW
     create table if not exists recipe_image_cache (
       title text primary key,
       image_json jsonb not null,
@@ -56,9 +74,10 @@ export async function initCanonCache() {
 
     create index if not exists ingredient_image_cache_updated_at_idx
       on ingredient_image_cache (updated_at desc);
-      `);
+  `);
 
   console.log("✅ canon_cache table ready");
   console.log("✅ recipe_query_cache table ready");
   console.log("✅ recipe_image_cache table ready");
+  console.log("✅ ingredient_image_cache table ready");
 }

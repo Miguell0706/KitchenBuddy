@@ -44,8 +44,6 @@ const CATEGORY_OPTIONS: {
   { key: "frozen", label: "Frozen", icon: "snow-outline" },
   { key: "snacks", label: "Snacks", icon: "pizza-outline" },
   { key: "pet", label: "Pet", icon: "paw-outline" },
-  { key: "household", label: "Household", icon: "home-outline" },
-  { key: "supplements", label: "Supplements", icon: "medkit-outline" },
 ];
 function isoDateDaysFromNow(days: number): string {
   const d = new Date();

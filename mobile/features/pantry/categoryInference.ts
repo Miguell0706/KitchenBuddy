@@ -412,47 +412,6 @@ export const CATEGORY_RULES: ReadonlyArray<{
       "kibble",
     ],
   },
-
-  // ---------------- HOUSEHOLD ----------------
-  {
-    category: "household",
-    keywords: [
-      "soap",
-      "dish soap",
-      "hand soap",
-      "detergent",
-      "laundry detergent",
-      "cleaner",
-      "disinfectant",
-      "paper towel",
-      "toilet paper",
-      "napkin",
-      "tissue",
-      "trash bag",
-      "garbage bag",
-      "foil",
-      "aluminum foil",
-      "plastic wrap",
-      "cling wrap",
-      "sponge",
-    ],
-  },
-
-  // ---------------- SUPPLEMENTS ----------------
-  {
-    category: "supplements",
-    keywords: [
-      "vitamin",
-      "multivitamin",
-      "supplement",
-      "protein",
-      "protein powder",
-      "omega",
-      "omega 3",
-      "collagen",
-      "creatine",
-    ],
-  },
 ];
 
 function normalizeForMatch(s: string) {

@@ -3,7 +3,7 @@ export type CanonResult = {
   canonicalName: string;
   recipeSearchName: string;
   status: "item" | "not_item" | "unknown";
-  kind: "food" | "household" | "other";
+  kind: "food" | "other";
   ingredientType: "ingredient" | "product" | "ambiguous";
   confidence: number; // 0..1
   updatedAt: number;
