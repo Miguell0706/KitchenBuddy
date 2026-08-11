@@ -203,9 +203,34 @@ type Out = {
     key: string;
     canonicalName: string;
     recipeSearchName: string;
+
     status: "item" | "not_item" | "unknown";
     kind: "food" | "other";
     ingredientType: "ingredient" | "product" | "ambiguous";
+
+    categoryKey:
+      | "produce"
+      | "meatSeafood"
+      | "dairyEggs"
+      | "bakery"
+      | "pantry"
+      | "condiments"
+      | "spices"
+      | "beverages"
+      | "frozen"
+      | "snacks"
+      | "pet"
+      | "unknown";
+
+    storageType:
+      | "pantry"
+      | "refrigerated"
+      | "frozen"
+      | "unknown";
+
+    expiryDays: number | null;
+    expiryConfidence: number;
+
     confidence: number;
   }>;
 };
@@ -218,7 +243,10 @@ For every receipt line:
 2. Reject anything that is not food.
 3. Canonicalize valid food names into clean, human-friendly names.
 4. Create a recipeSearchName optimized for recipe searching.
-5. Preserve the provided key exactly.
+5. Choose the best pantry category.
+6. Infer the most likely normal storage condition after purchase.
+7. Estimate a reasonable number of days until the food should generally be used under that storage condition.
+8. Preserve the provided key exactly.
 
 STATUS RULES:
 
@@ -251,6 +279,7 @@ Examples:
 - canned food
 - sauces
 - condiments
+- pet food
 
 status="not_item"
 Use for anything that should NOT enter a food pantry.
@@ -377,6 +406,312 @@ Use only if a valid food item's role is genuinely unclear.
 If status!="item":
 - ingredientType MUST be "ambiguous".
 
+CATEGORY RULES:
+
+categoryKey is only meaningful when status="item".
+
+Allowed values:
+- produce
+- meatSeafood
+- dairyEggs
+- bakery
+- pantry
+- condiments
+- spices
+- beverages
+- frozen
+- snacks
+- pet
+- unknown
+
+Choose the category based on the ACTUAL FOOD PRODUCT, not merely one word appearing in the name.
+
+Use:
+
+produce
+- fresh fruits
+- fresh vegetables
+- fresh herbs when treated as produce
+
+meatSeafood
+- raw or refrigerated meat
+- poultry
+- fish
+- seafood
+- sausage and similar meat products when not explicitly frozen
+
+dairyEggs
+- milk
+- eggs
+- cheese
+- yogurt
+- butter
+- cream
+- cottage cheese
+- other refrigerated dairy products
+
+bakery
+- bread
+- buns
+- rolls
+- bagels
+- tortillas
+- muffins
+- baked bakery goods
+
+pantry
+- rice
+- pasta
+- beans
+- flour
+- sugar
+- canned foods
+- shelf-stable staples
+- shelf-stable packaged ingredients
+
+condiments
+- oils
+- mayonnaise
+- ketchup
+- mustard
+- soy sauce
+- hot sauce
+- salad dressing
+- vinegar
+- sauces
+- dips
+
+spices
+- salt
+- pepper
+- dried spices
+- seasoning blends
+- dried herbs
+
+beverages
+- water
+- juice
+- soda
+- coffee
+- tea
+- other drinks
+
+frozen
+- ONLY use when the product is explicitly frozen or clearly sold as a frozen product
+
+snacks
+- chips
+- crackers
+- candy
+- cookies
+- popcorn
+- snack bars
+- similar snack foods
+
+pet
+- pet food
+- dog food
+- cat food
+- pet treats
+
+Important category examples:
+
+Avocado -> produce
+Avocado Oil -> condiments
+
+Tomato -> produce
+Tomato Sauce -> condiments
+
+Apple -> produce
+Apple Juice -> beverages
+
+Black Pepper -> spices
+Bell Pepper -> produce
+
+Chicken Breast -> meatSeafood
+Frozen Chicken Breast -> frozen
+
+NY Strip Steak -> meatSeafood
+Frozen Steak -> frozen
+
+Soy Sauce -> condiments
+Mayonnaise -> condiments
+Sea Salt -> spices
+Cottage Cheese -> dairyEggs
+Jasmine Rice -> pantry
+Potato Chips -> snacks
+Frozen Pizza -> frozen
+
+If status!="item":
+- categoryKey MUST be "unknown".
+
+If the correct category truly cannot be determined:
+- categoryKey MUST be "unknown".
+
+STORAGE RULES:
+
+storageType represents the most likely normal storage condition AFTER PURCHASE.
+
+Allowed values:
+- pantry
+- refrigerated
+- frozen
+- unknown
+
+pantry:
+Use for shelf-stable foods normally stored at room temperature before opening.
+
+Examples:
+- rice
+- dry pasta
+- flour
+- canned foods
+- cooking oil
+- unopened sauces
+- cereal
+- chips
+- spices
+
+refrigerated:
+Use for foods normally stored in a refrigerator after purchase.
+
+Examples:
+- milk
+- eggs
+- raw chicken
+- raw steak
+- fresh salmon
+- yogurt
+- cottage cheese
+- fresh produce
+- deli meat
+
+frozen:
+Use ONLY when the product is explicitly frozen or is clearly a frozen product.
+
+Examples:
+- frozen pizza
+- frozen vegetables
+- frozen chicken breast
+- frozen dinners
+- ice cream
+
+Do NOT assume raw meat is frozen simply because freezing would make it last longer.
+
+For foods that could be stored in several ways:
+- choose the most typical storage condition immediately after purchase
+- use "unknown" only when genuinely unclear
+
+If status!="item":
+- storageType MUST be "unknown".
+
+EXPIRY RULES:
+
+expiryDays is the estimated number of days FROM PURCHASE until the item should generally be used, based on storageType.
+
+These are practical pantry-reminder estimates, not exact legal expiration dates.
+
+Use conservative and realistic estimates.
+
+Examples of typical refrigerated estimates:
+
+Raw chicken breast:
+- about 2-4 days
+
+Raw steak:
+- about 3-5 days
+
+Raw ground beef:
+- about 1-2 days
+
+Fresh salmon or raw fish:
+- about 1-2 days
+
+Milk:
+- about 7-14 days
+
+Eggs:
+- about 21-35 days
+
+Cottage cheese:
+- about 7-14 days
+
+Yogurt:
+- about 7-14 days
+
+Bagged spinach:
+- about 5-10 days
+
+Fresh berries:
+- about 3-7 days
+
+Apples:
+- about 14-30 days refrigerated
+
+Examples of pantry estimates:
+
+Bread:
+- about 5-10 days
+
+Avocado oil:
+- about 180-365 days
+
+Rice:
+- about 365-730 days
+
+Dry pasta:
+- about 365-730 days
+
+Canned foods:
+- about 365-730 days
+
+Spices:
+- about 365-730 days
+
+Unopened sauces and condiments:
+- often about 180-365 days depending on product
+
+Examples of frozen estimates:
+
+Frozen pizza:
+- about 90-180 days
+
+Frozen vegetables:
+- about 180-365 days
+
+Frozen chicken:
+- about 180-270 days
+
+Frozen steak:
+- about 180-365 days
+
+IMPORTANT:
+
+- Do NOT use an extreme placeholder such as 9999.
+- Do NOT assume meat is frozen unless the receipt/product indicates frozen.
+- Do NOT give raw refrigerated meat a many-month expiry.
+- Base expiryDays on the inferred storageType.
+- Prefer a conservative midpoint when there is a reasonable range.
+- expiryDays MUST be an integer.
+- expiryDays MUST be greater than 0 when provided.
+- If a reasonable estimate cannot be made, expiryDays MUST be null.
+
+expiryConfidence measures confidence in the STORAGE + EXPIRY estimate.
+
+It is separate from the main confidence field.
+
+Use:
+
+0.90-0.99 = storage and expected shelf life are very clear
+0.70-0.89 = good typical estimate
+0.50-0.69 = meaningful uncertainty
+0.25-0.49 = weak estimate
+0.00-0.24 = mostly guessing
+
+If status!="item":
+- expiryDays MUST be null
+- expiryConfidence MUST be 0
+
 CANONICAL NAME RULES:
 
 If status="item":
@@ -460,6 +795,63 @@ Examples:
 -> canonicalName: "Boneless Skinless Chicken Breast"
 -> recipeSearchName: "Chicken Breast"
 
+COMBINED EXAMPLES:
+
+"AVOCADO OIL"
+-> canonicalName: "Avocado Oil"
+-> recipeSearchName: "Avocado Oil"
+-> status: "item"
+-> kind: "food"
+-> ingredientType: "ingredient"
+-> categoryKey: "condiments"
+-> storageType: "pantry"
+-> expiryDays: 270
+-> expiryConfidence: 0.9
+
+"BONELESS CHICKEN BREAST"
+-> canonicalName: "Boneless Chicken Breast"
+-> recipeSearchName: "Chicken Breast"
+-> status: "item"
+-> kind: "food"
+-> ingredientType: "ingredient"
+-> categoryKey: "meatSeafood"
+-> storageType: "refrigerated"
+-> expiryDays: 3
+-> expiryConfidence: 0.95
+
+"NY STRIP STEAK"
+-> canonicalName: "NY Strip Steak"
+-> recipeSearchName: "NY Strip Steak"
+-> status: "item"
+-> kind: "food"
+-> ingredientType: "ingredient"
+-> categoryKey: "meatSeafood"
+-> storageType: "refrigerated"
+-> expiryDays: 4
+-> expiryConfidence: 0.95
+
+"FROZEN CHICKEN BREAST"
+-> canonicalName: "Frozen Chicken Breast"
+-> recipeSearchName: "Chicken Breast"
+-> status: "item"
+-> kind: "food"
+-> ingredientType: "ingredient"
+-> categoryKey: "frozen"
+-> storageType: "frozen"
+-> expiryDays: 210
+-> expiryConfidence: 0.95
+
+"SOY SAUCE"
+-> canonicalName: "Soy Sauce"
+-> recipeSearchName: "Soy Sauce"
+-> status: "item"
+-> kind: "food"
+-> ingredientType: "product"
+-> categoryKey: "condiments"
+-> storageType: "pantry"
+-> expiryDays: 365
+-> expiryConfidence: 0.9
+
 KEY RULES:
 
 - Preserve each key EXACTLY.
@@ -470,6 +862,8 @@ KEY RULES:
 - Do not add extra fields.
 
 CONFIDENCE RULES:
+
+confidence represents confidence that the receipt line was correctly understood and canonicalized.
 
 0.95-0.99 = extremely clear
 0.85-0.94 = clear
@@ -485,7 +879,6 @@ INPUT ROWS:
 ${JSON.stringify(rows, null, 2)}
 `.trim();
 }
-
 function safeParseJson(raw: string): any {
   const trimmed = raw.trim();
 
@@ -523,6 +916,23 @@ function validate(rowsIn: InputRow[], out: any): void {
 
   const outputKeys = new Set<string>();
 
+  const validCategories = [
+    "produce",
+    "meatSeafood",
+    "dairyEggs",
+    "bakery",
+    "pantry",
+    "condiments",
+    "spices",
+    "beverages",
+    "frozen",
+    "snacks",
+    "pet",
+    "unknown",
+  ];
+
+  const validStorageTypes = ["pantry", "refrigerated", "frozen", "unknown"];
+
   for (const r of out.rows) {
     if (typeof r?.key !== "string" || !inputKeySet.has(r.key)) {
       throw new Error(`Bad/missing key: ${r?.key}`);
@@ -552,6 +962,32 @@ function validate(rowsIn: InputRow[], out: any): void {
 
     if (!["ingredient", "product", "ambiguous"].includes(r.ingredientType)) {
       throw new Error(`ingredientType invalid: ${r.key}`);
+    }
+
+    if (!validCategories.includes(r.categoryKey)) {
+      throw new Error(`categoryKey invalid: ${r.key}`);
+    }
+
+    if (!validStorageTypes.includes(r.storageType)) {
+      throw new Error(`storageType invalid: ${r.key}`);
+    }
+
+    if (
+      r.expiryDays !== null &&
+      (typeof r.expiryDays !== "number" ||
+        !Number.isInteger(r.expiryDays) ||
+        r.expiryDays <= 0)
+    ) {
+      throw new Error(`expiryDays invalid: ${r.key}`);
+    }
+
+    if (
+      typeof r.expiryConfidence !== "number" ||
+      !Number.isFinite(r.expiryConfidence) ||
+      r.expiryConfidence < 0 ||
+      r.expiryConfidence > 1
+    ) {
+      throw new Error(`expiryConfidence invalid: ${r.key}`);
     }
 
     if (
@@ -584,6 +1020,22 @@ function validate(rowsIn: InputRow[], out: any): void {
         `Non-item must have ingredientType="ambiguous": ${r.key}`,
       );
     }
+
+    if (r.status !== "item" && r.categoryKey !== "unknown") {
+      throw new Error(`Non-item categoryKey must be "unknown": ${r.key}`);
+    }
+
+    if (r.status !== "item" && r.storageType !== "unknown") {
+      throw new Error(`Non-item storageType must be "unknown": ${r.key}`);
+    }
+
+    if (r.status !== "item" && r.expiryDays !== null) {
+      throw new Error(`Non-item expiryDays must be null: ${r.key}`);
+    }
+
+    if (r.status !== "item" && r.expiryConfidence !== 0) {
+      throw new Error(`Non-item expiryConfidence must be 0: ${r.key}`);
+    }
   }
 
   for (const key of inputKeys) {
@@ -601,6 +1053,12 @@ function makeNonItemResult(row: InputRow, updatedAt: number): CanonResult {
     status: "not_item",
     kind: "other",
     ingredientType: "ambiguous",
+
+    categoryKey: "unknown",
+    storageType: "unknown",
+    expiryDays: null,
+    expiryConfidence: 0,
+
     confidence: 0.95,
     updatedAt,
     source: "none",
@@ -615,6 +1073,12 @@ function makeFallbackResult(row: InputRow, updatedAt: number): CanonResult {
     status: "unknown",
     kind: "other",
     ingredientType: "ambiguous",
+
+    categoryKey: "unknown",
+    storageType: "unknown",
+    expiryDays: null,
+    expiryConfidence: 0,
+
     confidence: 0,
     updatedAt,
     source: "none",
@@ -694,6 +1158,11 @@ export async function geminiCanonicalize(
     const llmResults: CanonResult[] = parsed.rows.map((r: any) => {
       const confidence = Math.max(0, Math.min(1, Number(r.confidence ?? 0)));
 
+      const expiryConfidence = Math.max(
+        0,
+        Math.min(1, Number(r.expiryConfidence ?? 0)),
+      );
+
       const isFoodItem = r.status === "item" && r.kind === "food";
 
       const isLowConfidenceFood = isFoodItem && confidence < 0.7;
@@ -703,13 +1172,21 @@ export async function geminiCanonicalize(
           key: r.key,
           canonicalName: "",
           recipeSearchName: "",
+
           status: isLowConfidenceFood
             ? "unknown"
             : r.status === "unknown"
               ? "unknown"
               : "not_item",
+
           kind: "other",
           ingredientType: "ambiguous",
+
+          categoryKey: "unknown",
+          storageType: "unknown",
+          expiryDays: null,
+          expiryConfidence: 0,
+
           confidence,
           updatedAt,
           source: "llm",
@@ -720,9 +1197,16 @@ export async function geminiCanonicalize(
         key: r.key,
         canonicalName: r.canonicalName.trim(),
         recipeSearchName: r.recipeSearchName.trim() || r.canonicalName.trim(),
+
         status: "item",
         kind: "food",
         ingredientType: r.ingredientType,
+
+        categoryKey: r.categoryKey,
+        storageType: r.storageType,
+        expiryDays: r.expiryDays,
+        expiryConfidence,
+
         confidence,
         updatedAt,
         source: "llm",

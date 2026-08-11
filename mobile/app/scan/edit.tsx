@@ -38,6 +38,10 @@ type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
   expiryDate?: string | null;
   recipeSearchName?: string;
+
+  storageType?: "pantry" | "refrigerated" | "frozen" | "unknown";
+  expiryConfidence?: number;
+
   ingredientImage?: {
     url: string;
     avgColor: string;
@@ -372,15 +376,34 @@ export default function ScanEditScreen() {
             const autoSelect =
               !excluded && r.status === "item" && (r.confidence ?? 0) >= 0.8;
 
-            const nextCategory = inferCategoryFromName(nextName ?? "");
+            const aiCategory =
+              r.categoryKey && r.categoryKey !== "unknown"
+                ? (r.categoryKey as CategoryKey)
+                : null;
+
+            const nextCategory =
+              aiCategory ?? inferCategoryFromName(nextName ?? "");
+
+            const aiExpiry =
+              typeof r.expiryDays === "number" && r.expiryDays > 0
+                ? isoDateDaysFromNow(r.expiryDays)
+                : null;
+
             const nextExpiry =
-              it.expiryDate ?? defaultExpiryDateForCategory(nextCategory);
+              aiExpiry ??
+              it.expiryDate ??
+              defaultExpiryDateForCategory(nextCategory);
             return {
               ...it,
               name: nextName,
               recipeSearchName: r.recipeSearchName?.trim() || nextName,
+
               categoryKey: nextCategory,
               expiryDate: nextExpiry,
+
+              storageType: r.storageType ?? "unknown",
+              expiryConfidence: r.expiryConfidence ?? 0,
+
               selected: excluded ? false : autoSelect || it.selected,
               excluded,
               ingredientImage: mergedItem.ingredientImage ?? null,

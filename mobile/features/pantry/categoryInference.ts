@@ -431,14 +431,19 @@ function keywordForms(keyword: string) {
 }
 export function inferCategoryFromName(name: string): CategoryKey {
   const { spaced: nSpaced, compact: nCompact } = normalizeForMatch(name);
+
   if (!nSpaced) return "pantry";
   if (isProbablyNotAnItem(nSpaced)) return "pantry";
+
+  // High-priority specific matches
+  if (nSpaced.includes("avocado oil")) return "condiments";
+  if (nSpaced.includes("apple juice")) return "beverages";
+  if (nSpaced.includes("tomato sauce")) return "condiments";
 
   for (const rule of CATEGORY_RULES) {
     for (const kw of rule.keywords) {
       const { spaced: kSpaced, compact: kCompact } = keywordForms(kw);
 
-      // match with spaces OR without spaces
       if (nSpaced.includes(kSpaced) || nCompact.includes(kCompact)) {
         return rule.category;
       }
