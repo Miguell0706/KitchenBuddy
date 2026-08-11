@@ -550,61 +550,37 @@ If the correct category truly cannot be determined:
 
 STORAGE RULES:
 
-storageType represents the most likely normal storage condition AFTER PURCHASE.
-
-Allowed values:
-- pantry
-- refrigerated
-- frozen
-- unknown
-
 pantry:
-Use for shelf-stable foods normally stored at room temperature before opening.
-
-Examples:
-- rice
-- dry pasta
-- flour
-- canned foods
-- cooking oil
-- unopened sauces
-- cereal
-- chips
-- spices
+Shelf-stable foods that are normally stored at room temperature.
 
 refrigerated:
-Use for foods normally stored in a refrigerator after purchase.
-
-Examples:
-- milk
-- eggs
-- raw chicken
-- raw steak
-- fresh salmon
-- yogurt
-- cottage cheese
-- fresh produce
-- deli meat
+Foods normally kept refrigerated after purchase and expected to be consumed within days or weeks.
 
 frozen:
-Use ONLY when the product is explicitly frozen or is clearly a frozen product.
+Use when the product is explicitly frozen OR when frozen storage is the most typical practical assumption for long-term home storage.
 
 Examples:
-- frozen pizza
-- frozen vegetables
-- frozen chicken breast
-- frozen dinners
-- ice cream
+- Frozen pizza
+- Frozen vegetables
+- Ground beef
+- Hamburger patties
+- Raw salmon fillets
+- Bulk chicken breasts
+- Frozen dinners
+- Ice cream
 
-Do NOT assume raw meat is frozen simply because freezing would make it last longer.
+For raw meat and fish, choose the storage condition that is most practical and commonly expected for a pantry inventory app.
 
-For foods that could be stored in several ways:
-- choose the most typical storage condition immediately after purchase
-- use "unknown" only when genuinely unclear
+If a product is commonly purchased and stored frozen for later use (such as ground beef, hamburger patties, salmon fillets, or bulk chicken), choose "frozen".
+
+If a product is clearly intended for immediate fresh use (such as deli meat or fresh seafood from the service counter), choose "refrigerated".
+
+For foods that could reasonably be stored in multiple ways:
+- choose the storage condition that is most likely for the average shopper immediately after purchase.
+- use "unknown" only when there is genuinely not enough information.
 
 If status!="item":
 - storageType MUST be "unknown".
-
 EXPIRY RULES:
 
 expiryDays is the estimated number of days FROM PURCHASE until the item should generally be used, based on storageType.
@@ -615,20 +591,8 @@ Use conservative and realistic estimates.
 
 Examples of typical refrigerated estimates:
 
-Raw chicken breast:
-- about 2-4 days
-
-Raw steak:
-- about 3-5 days
-
-Raw ground beef:
-- about 1-2 days
-
-Fresh salmon or raw fish:
-- about 1-2 days
-
 Milk:
-- about 7-14 days
+- about 10-15 days
 
 Eggs:
 - about 21-35 days
