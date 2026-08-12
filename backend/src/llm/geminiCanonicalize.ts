@@ -652,7 +652,6 @@ Frozen steak:
 IMPORTANT:
 
 - Do NOT use an extreme placeholder such as 9999.
-- Do NOT assume meat is frozen unless the receipt/product indicates frozen.
 - Do NOT give raw refrigerated meat a many-month expiry.
 - Base expiryDays on the inferred storageType.
 - Prefer a conservative midpoint when there is a reasonable range.
