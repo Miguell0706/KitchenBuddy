@@ -7,7 +7,7 @@ import type { CanonResult } from "../lib/types.js";
 import { geminiCanonicalize } from "../llm/geminiCanonicalize.js";
 import { getOrCreateIngredientImage } from "../lib/ingredientImage.js";
 export const canonicalizeRouter = express.Router();
-const PROMPT_VERSION = "v5";
+const PROMPT_VERSION = "v6";
 
 const BodySchema = z.object({
   deviceId: z.string().min(6),
