@@ -566,6 +566,8 @@ Examples:
 - Hamburger patties
 - Raw salmon fillets
 - Bulk chicken breasts
+- Chicken breast
+- Steak
 - Frozen dinners
 - Ice cream
 
