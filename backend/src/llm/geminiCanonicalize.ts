@@ -497,7 +497,7 @@ beverages
 - other drinks
 
 frozen
-- ONLY use when the product is explicitly frozen or clearly sold as a frozen product
+- Use when the product is explicitly frozen or clearly sold as a frozen product such as chicken breast, frozen pizza, or frozen vegetables, steak, etc.
 
 snacks
 - chips
@@ -514,34 +514,6 @@ pet
 - cat food
 - pet treats
 
-Important category examples:
-
-Avocado -> produce
-Avocado Oil -> condiments
-
-Tomato -> produce
-Tomato Sauce -> condiments
-
-Apple -> produce
-Apple Juice -> beverages
-
-Black Pepper -> spices
-Bell Pepper -> produce
-
-Chicken Breast -> meatSeafood
-Frozen Chicken Breast -> frozen
-
-NY Strip Steak -> meatSeafood
-Frozen Steak -> frozen
-
-Soy Sauce -> condiments
-Mayonnaise -> condiments
-Sea Salt -> spices
-Cottage Cheese -> dairyEggs
-Jasmine Rice -> pantry
-Potato Chips -> snacks
-Frozen Pizza -> frozen
-
 If status!="item":
 - categoryKey MUST be "unknown".
 
@@ -557,7 +529,7 @@ refrigerated:
 Foods normally kept refrigerated after purchase and expected to be consumed within days or weeks.
 
 frozen:
-Use when the product is explicitly frozen OR when frozen storage is the most typical practical assumption for long-term home storage.
+Use when frozen storage is the most typical practical assumption for long-term home storage.
 
 Examples:
 - Frozen pizza
@@ -647,6 +619,12 @@ Frozen vegetables:
 
 Frozen chicken:
 - about 180-270 days
+
+Chicken breast:
+- about 180-270 days
+
+Steak:
+- about 180-365 days
 
 Frozen steak:
 - about 180-365 days
@@ -772,28 +750,6 @@ COMBINED EXAMPLES:
 -> storageType: "pantry"
 -> expiryDays: 270
 -> expiryConfidence: 0.9
-
-"BONELESS CHICKEN BREAST"
--> canonicalName: "Boneless Chicken Breast"
--> recipeSearchName: "Chicken Breast"
--> status: "item"
--> kind: "food"
--> ingredientType: "ingredient"
--> categoryKey: "meatSeafood"
--> storageType: "refrigerated"
--> expiryDays: 3
--> expiryConfidence: 0.95
-
-"NY STRIP STEAK"
--> canonicalName: "NY Strip Steak"
--> recipeSearchName: "NY Strip Steak"
--> status: "item"
--> kind: "food"
--> ingredientType: "ingredient"
--> categoryKey: "meatSeafood"
--> storageType: "refrigerated"
--> expiryDays: 4
--> expiryConfidence: 0.95
 
 "FROZEN CHICKEN BREAST"
 -> canonicalName: "Frozen Chicken Breast"
