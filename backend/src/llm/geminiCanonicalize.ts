@@ -565,7 +565,7 @@ Use conservative and realistic estimates.
 
 Examples of typical refrigerated estimates:
 
-Milk:
+All kinds of milk such as whole, 2%, skim, lactose-free, and plant-based milks, oat milk, and soy milk:
 - about 10-15 days
 
 Eggs:
