@@ -650,7 +650,7 @@ export default function SettingsScreen() {
           icon="help-circle-outline"
           title="Help"
           subtitle="FAQ + contact"
-          onPress={() => Alert.alert("Help", "Placeholder.")}
+          onPress={() => router.push("/settings/help")}
           right={
             <Ionicons
               name="chevron-forward"
@@ -664,7 +664,7 @@ export default function SettingsScreen() {
           icon="information-circle-outline"
           title="About"
           subtitle="KitchenBuddy v0.1"
-          onPress={() => Alert.alert("About", "KitchenBuddy .")}
+          onPress={() => router.push("/settings/about")}
           right={
             <Ionicons
               name="chevron-forward"

@@ -67,10 +67,6 @@ const ExpiringRecipesScreen: React.FC = () => {
   // local undo state
   const [undo, setUndo] = useState<UndoState>(null);
 
-  useEffect(() => {
-    setRecipeItemIds(parsedIds);
-  }, [parsedIds]);
-
   function toggleRecipeSelection(id: string) {
     setRecipeItemIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
