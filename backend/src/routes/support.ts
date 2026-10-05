@@ -3,7 +3,7 @@ import { Resend } from "resend";
 
 const router = Router();
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.EMAIL_KEY);
 
 router.post("/", async (req, res) => {
   try {
