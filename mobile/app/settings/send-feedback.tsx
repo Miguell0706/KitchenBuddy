@@ -41,11 +41,14 @@ export default function FeedbackScreen() {
   const [showFeedbackTypes, setShowFeedbackTypes] = useState(false);
 
   const [feedback, setFeedback] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = feedback.trim().length >= 5;
 
-  function handleSubmit() {
-    if (!canSubmit) {
+  async function handleSubmit() {
+    const feedbackTrimmed = feedback.trim();
+
+    if (feedbackTrimmed.length < 5) {
       Alert.alert(
         "Tell us what you think",
         "Please enter your feedback before submitting.",
@@ -53,27 +56,52 @@ export default function FeedbackScreen() {
       return;
     }
 
-    /*
-      Later this can be sent to your backend:
+    if (submitting) return;
 
-      {
-        feedbackType,
-        feedback,
-        screenshot,
-        createdAt
-      }
-    */
+    try {
+      setSubmitting(true);
 
-    Alert.alert(
-      "Feedback received",
-      "Thanks for helping make KitchenBuddy better.",
-      [
+      const response = await fetch(
+        "https://receiptchef.onrender.com/api/support",
         {
-          text: "Done",
-          onPress: () => router.back(),
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "feedback",
+            category: feedbackType,
+            message: feedbackTrimmed,
+          }),
         },
-      ],
-    );
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data?.error || "Failed to send feedback.");
+      }
+
+      Alert.alert(
+        "Feedback received",
+        "Thanks for helping make KitchenBuddy better.",
+        [
+          {
+            text: "Done",
+            onPress: () => router.back(),
+          },
+        ],
+      );
+    } catch (error) {
+      console.error("Send feedback error:", error);
+
+      Alert.alert(
+        "Couldn't send feedback",
+        "Something went wrong while sending your feedback. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -261,17 +289,23 @@ export default function FeedbackScreen() {
 
           {/* Submit */}
           <Pressable
-            disabled={!canSubmit}
+            disabled={!canSubmit || submitting}
             style={({ pressed }) => [
               styles.submitButton,
-              !canSubmit && styles.submitButtonDisabled,
-              pressed && canSubmit && styles.submitButtonPressed,
+              (!canSubmit || submitting) && styles.submitButtonDisabled,
+              pressed && canSubmit && !submitting && styles.submitButtonPressed,
             ]}
             onPress={handleSubmit}
           >
-            <Ionicons name="paper-plane-outline" size={19} color="#fff" />
+            <Ionicons
+              name={submitting ? "hourglass-outline" : "paper-plane-outline"}
+              size={19}
+              color="#fff"
+            />
 
-            <Text style={styles.submitText}>Send Feedback</Text>
+            <Text style={styles.submitText}>
+              {submitting ? "Sending..." : "Send Feedback"}
+            </Text>
           </Pressable>
 
           <Text style={styles.footer}>

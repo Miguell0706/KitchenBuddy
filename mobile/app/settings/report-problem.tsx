@@ -42,11 +42,15 @@ export default function ReportProblemScreen() {
 
   const [description, setDescription] = useState("");
   const [expected, setExpected] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = description.trim().length >= 5;
 
-  function handleSubmit() {
-    if (!canSubmit) {
+  async function handleSubmit() {
+    const descriptionTrimmed = description.trim();
+    const expectedTrimmed = expected.trim();
+
+    if (descriptionTrimmed.length < 5) {
       Alert.alert(
         "Tell us what happened",
         "Please describe the problem before submitting.",
@@ -54,26 +58,54 @@ export default function ReportProblemScreen() {
       return;
     }
 
-    /*
-      Later this can be sent to your backend:
+    if (submitting) return;
 
-      {
-        problemType,
-        description,
-        expected,
-        screenshot,
-        createdAt
+    try {
+      setSubmitting(true);
+
+      const response = await fetch(
+        "https://receiptchef.onrender.com/api/support",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "problem",
+            category: problemType,
+            message: descriptionTrimmed,
+            expected: expectedTrimmed || undefined,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data?.error || "Failed to send problem report.");
       }
-    */
 
-    Alert.alert("Report received", "Thanks for helping improve KitchenBuddy.", [
-      {
-        text: "Done",
-        onPress: () => router.back(),
-      },
-    ]);
+      Alert.alert(
+        "Report received",
+        "Thanks for helping improve KitchenBuddy.",
+        [
+          {
+            text: "Done",
+            onPress: () => router.back(),
+          },
+        ],
+      );
+    } catch (error) {
+      console.error("Report problem error:", error);
+
+      Alert.alert(
+        "Couldn't send report",
+        "Something went wrong while sending your report. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
-
   return (
     <>
       <Stack.Screen
@@ -261,19 +293,24 @@ export default function ReportProblemScreen() {
 
           {/* Submit */}
           <Pressable
-            disabled={!canSubmit}
+            disabled={!canSubmit || submitting}
             style={({ pressed }) => [
               styles.submitButton,
-              !canSubmit && styles.submitButtonDisabled,
-              pressed && canSubmit && styles.submitButtonPressed,
+              (!canSubmit || submitting) && styles.submitButtonDisabled,
+              pressed && canSubmit && !submitting && styles.submitButtonPressed,
             ]}
             onPress={handleSubmit}
           >
-            <Ionicons name="paper-plane-outline" size={19} color="#fff" />
+            <Ionicons
+              name={submitting ? "hourglass-outline" : "paper-plane-outline"}
+              size={19}
+              color="#fff"
+            />
 
-            <Text style={styles.submitText}>Submit Report</Text>
+            <Text style={styles.submitText}>
+              {submitting ? "Sending..." : "Submit Report"}
+            </Text>
           </Pressable>
-
           <Text style={styles.footer}>
             Thank you for helping improve KitchenBuddy.
           </Text>
