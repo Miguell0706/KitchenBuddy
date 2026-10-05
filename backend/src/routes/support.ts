@@ -26,12 +26,14 @@ router.post("/", async (req, res) => {
     const { data, error } = await resend.emails.send({
       from: "KitchenBuddy <onboarding@resend.dev>",
 
-      // CHANGE THIS to the email where you want
-      // KitchenBuddy messages delivered.
-      to: "Kitchenbuddy.support@gmail.com",
+      // Resend test mode currently allows delivery
+      // to the email associated with the Resend account.
+      to: "miguellozano3757@gmail.com",
 
       subject,
 
+      // Allows you to reply directly to the user's email
+      // when they submit a Contact Support request.
       replyTo: email || undefined,
 
       text: `
