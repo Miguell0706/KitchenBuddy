@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { Colors, Spacing } from "@/constants/theme";
@@ -15,6 +15,7 @@ import { Colors, Spacing } from "@/constants/theme";
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export default function AboutScreen() {
+  const router = useRouter();
   return (
     <>
       <Stack.Screen
@@ -132,9 +133,7 @@ export default function AboutScreen() {
                 icon="shield-checkmark-outline"
                 title="Privacy Policy"
                 subtitle="Learn how KitchenBuddy handles your data"
-                onPress={() =>
-                  Alert.alert("Privacy Policy", "Privacy Policy coming soon.")
-                }
+                onPress={() => router.push("/settings/privacy-policy")}
               />
 
               <View style={styles.divider} />
@@ -143,9 +142,7 @@ export default function AboutScreen() {
                 icon="document-text-outline"
                 title="Terms of Use"
                 subtitle="Terms for using KitchenBuddy"
-                onPress={() =>
-                  Alert.alert("Terms of Use", "Terms of Use coming soon.")
-                }
+                onPress={() => router.push("/settings/terms-of-use")}
               />
 
               <View style={styles.divider} />
@@ -154,12 +151,7 @@ export default function AboutScreen() {
                 icon="information-circle-outline"
                 title="Food & Expiration Information"
                 subtitle="About KitchenBuddy's food estimates"
-                onPress={() =>
-                  Alert.alert(
-                    "Food & Expiration Information",
-                    "KitchenBuddy may estimate expiration dates based on the type of food and typical storage conditions.\n\nThese estimates are provided as helpful guidance and are not a guarantee of food safety. Always inspect food and follow manufacturer storage and safety instructions.",
-                  )
-                }
+                onPress={() => router.push("/settings/food-expiration-info")}
               />
 
               <View style={styles.divider} />
@@ -168,12 +160,7 @@ export default function AboutScreen() {
                 icon="sparkles-outline"
                 title="AI & Automated Results"
                 subtitle="About automatic food recognition"
-                onPress={() =>
-                  Alert.alert(
-                    "AI & Automated Results",
-                    "KitchenBuddy uses automated systems to help interpret receipt text, identify food, organize pantry items, and estimate certain food information.\n\nAutomatic results can be incorrect. Review important information before relying on it.",
-                  )
-                }
+                onPress={() => router.push("/settings/ai-automated-results")}
               />
             </View>
           </View>
@@ -187,9 +174,7 @@ export default function AboutScreen() {
                 icon="mail-outline"
                 title="Contact"
                 subtitle="Get in touch with KitchenBuddy"
-                onPress={() =>
-                  Alert.alert("Contact", "Contact information coming soon.")
-                }
+                onPress={() => router.push("/settings/contact-support")}
               />
 
               <View style={styles.divider} />
@@ -198,9 +183,7 @@ export default function AboutScreen() {
                 icon="chatbubble-ellipses-outline"
                 title="Send Feedback"
                 subtitle="Help make KitchenBuddy better"
-                onPress={() =>
-                  Alert.alert("Feedback", "Feedback options coming soon.")
-                }
+                onPress={() => router.push("/settings/send-feedback")}
               />
 
               <View style={styles.divider} />
