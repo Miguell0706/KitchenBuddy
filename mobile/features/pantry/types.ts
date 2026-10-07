@@ -22,6 +22,10 @@ export type PantryItem = {
   quantity: string;
   categoryKey: CategoryKey;
   expiryDate: string | null;
+
+  // Timestamp (ms) when this specific item entered the pantry
+  addedAt: number;
+
   ingredientImage?: IngredientImage | null;
 };
 

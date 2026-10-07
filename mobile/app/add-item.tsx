@@ -25,7 +25,7 @@ import { usePantryStore } from "@/features/pantry/store";
 import * as Haptics from "expo-haptics";
 import { savePantry } from "@/features/pantry/storage";
 import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
-
+import { appendPantryHistory } from "@/features/pantry/history";
 const CATEGORIES: {
   key: CategoryKey;
   label: string;
@@ -182,13 +182,17 @@ export default function AddItemModal() {
       computedExpiry === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
     try {
-      addItem(category, {
+      const newItem = {
         id: `${Date.now()}`,
         name: normalizedName,
         quantity,
         categoryKey: category,
         expiryDate,
-      });
+        addedAt: Date.now(),
+      };
+
+      addItem(category, newItem);
+      await appendPantryHistory(newItem, "added", "manual");
 
       const updatedPantry = usePantryStore.getState().pantry;
 

@@ -79,7 +79,7 @@ const ExpiringRecipesScreen: React.FC = () => {
     const wasSelected = recipeItemIds.includes(item.id);
 
     // ✅ create history entry you can undo
-    const historyEntryId = await appendPantryHistory(item, "deleted");
+    const historyEntryId = await appendPantryHistory(item, "removed");
 
     if (index !== -1) {
       setUndo({

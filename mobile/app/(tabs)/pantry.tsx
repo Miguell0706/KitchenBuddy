@@ -82,7 +82,7 @@ export default function PantryScreen() {
     item: PantryItem;
     categoryKey: CategoryKey;
     index: number;
-    action: "delete" | "used";
+    action: "removed" | "expired" | "used";
     historyEntryId?: string;
   } | null>(null);
 
@@ -244,10 +244,10 @@ export default function PantryScreen() {
     );
   }
 
-  async function handleDelete(item: PantryItem) {
-    deleteItem(item.categoryKey, item.id, "delete");
+  async function handleRemove(item: PantryItem, reason: "removed" | "expired") {
+    deleteItem(item.categoryKey, item.id, reason);
 
-    const historyEntryId = await appendPantryHistory(item, "deleted");
+    const historyEntryId = await appendPantryHistory(item, reason);
 
     setUndo((u) =>
       u && u.item.id === item.id && u.categoryKey === item.categoryKey
@@ -282,7 +282,7 @@ export default function PantryScreen() {
 
     // 3) Write history entries (don’t await; your queue handles ordering)
     for (const it of deleted) {
-      appendPantryHistory(it, "deleted"); // <-- use your actual action string/union value
+      void appendPantryHistory(it, "removed");
     }
 
     clearSelection();
@@ -379,12 +379,23 @@ export default function PantryScreen() {
   };
 
   function confirmDelete(categoryKey: string, item: PantryItem) {
-    Alert.alert("Delete item?", "This cannot be undone", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert("Remove item", "What happened to this item?", [
       {
-        text: "Delete",
+        text: "Used",
+        onPress: () => handleMarkUsed(item),
+      },
+      {
+        text: "Expired / Thrown Away",
+        onPress: () => handleRemove(item, "expired"),
+      },
+      {
+        text: "Remove",
         style: "destructive",
-        onPress: () => handleDelete(item), // <- logs + deletes
+        onPress: () => handleRemove(item, "removed"),
+      },
+      {
+        text: "Cancel",
+        style: "cancel",
       },
     ]);
   }
@@ -403,7 +414,7 @@ export default function PantryScreen() {
   const deleteItem = (
     categoryKey: CategoryKey,
     itemId: string,
-    action: "delete" | "used" = "delete",
+    action: "removed" | "expired" | "used" = "removed",
   ) => {
     setPantry((prev) => {
       const list = prev[categoryKey];
@@ -420,6 +431,7 @@ export default function PantryScreen() {
 
   const markUsed = (categoryKey: CategoryKey, id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
     deleteItem(categoryKey, id, "used");
   };
 
@@ -452,10 +464,13 @@ export default function PantryScreen() {
           text: "Delete",
           style: "destructive",
           onPress: () => {
+            // Capture the expired items before removing them
+            const itemsToExpire = [...expiredItems];
+
             setPantry((prev) => {
               const next = { ...prev };
 
-              expiredItems.forEach((item) => {
+              itemsToExpire.forEach((item) => {
                 next[item.categoryKey] = next[item.categoryKey].filter(
                   (i) => i.id !== item.id,
                 );
@@ -463,6 +478,11 @@ export default function PantryScreen() {
 
               return next;
             });
+
+            // Record each removed item as expired for history/analytics
+            for (const item of itemsToExpire) {
+              void appendPantryHistory(item, "expired");
+            }
           },
         },
       ],
@@ -503,7 +523,18 @@ export default function PantryScreen() {
         {
           text: "Clear category (remove all items)",
           style: "destructive",
-          onPress: () => setPantry((prev) => ({ ...prev, [cat.key]: [] })),
+          onPress: () => {
+            const removedItems = [...pantry[cat.key]];
+
+            setPantry((prev) => ({
+              ...prev,
+              [cat.key]: [],
+            }));
+
+            for (const item of removedItems) {
+              void appendPantryHistory(item, "removed");
+            }
+          },
         },
         { text: "Cancel", style: "cancel" },
       ]);
@@ -795,8 +826,8 @@ export default function PantryScreen() {
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm
-                    onSwipeDelete={() => handleDelete(item)}
+                    onPressDelete={() => handleRemove(item, "expired")}
+                    onSwipeDelete={() => handleRemove(item, "expired")}
                   />
                 ))}
               </View>
@@ -877,7 +908,7 @@ export default function PantryScreen() {
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm
-                    onSwipeDelete={() => handleDelete(item)}
+                    onSwipeDelete={() => handleRemove(item, "removed")}
                   />
                 ))}
               </View>
@@ -964,7 +995,7 @@ export default function PantryScreen() {
                         onPressUsed={() => handleMarkUsed(item)}
                         onPressEdit={() => openEdit(cat.key, item.id)}
                         onPressDelete={() => confirmDelete(cat.key, item)}
-                        onSwipeDelete={() => handleDelete(item)}
+                        onSwipeDelete={() => handleRemove(item, "removed")}
                       />
                     ))}
                 </View>
@@ -1051,7 +1082,11 @@ export default function PantryScreen() {
       {undo && (
         <View style={styles.undoBar}>
           <Text style={[TextStyles.small, styles.undoText]} numberOfLines={2}>
-            {undo.action === "used" ? "Marked used " : "Deleted "}
+            {undo.action === "used"
+              ? "Marked used "
+              : undo.action === "expired"
+                ? "Marked expired "
+                : "Removed "}{" "}
             {undo.item.name}
           </Text>
 

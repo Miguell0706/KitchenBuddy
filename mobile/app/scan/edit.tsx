@@ -17,6 +17,7 @@ import { fetchWithTimeout } from "@/src/utils/fetchWithTimeout";
 import { inferCategoryFromName } from "@/features/pantry/categoryInference";
 import type { CategoryKey, PantryItem } from "@/features/pantry/types";
 import { addPantryItems } from "@/features/pantry/storage";
+import { appendPantryHistory } from "@/features/pantry/history";
 import {
   readFixStore,
   normalizeFixKey,
@@ -152,6 +153,7 @@ function toPantryItems(drafts: DraftScanItem[]): PantryItem[] {
     quantity: "1",
     expiryDate: d.expiryDate ?? null,
     categoryKey: d.categoryKey ?? "pantry",
+    addedAt: Date.now(),
     ingredientImage: d.ingredientImage ?? null,
   }));
 }
@@ -598,9 +600,15 @@ export default function ScanEditScreen() {
       // Save items to pantry
       await addPantryItems(newPantryItems);
 
+      // Record receipt purchases for pantry history + analytics
+      await Promise.all(
+        newPantryItems.map((item) =>
+          appendPantryHistory(item, "purchased", "receipt"),
+        ),
+      );
+
       // Rebuild expiry notifications using updated pantry
       await syncExpiryReminders();
-
       // Save user's scan corrections
       await saveFixesForUserEdits(chosen);
 

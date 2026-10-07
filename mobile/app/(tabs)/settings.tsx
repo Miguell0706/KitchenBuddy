@@ -576,14 +576,9 @@ export default function SettingsScreen() {
 
         <Row
           icon="star-outline"
-          title="Upgrade to Premium"
-          subtitle="Smart grocery list, advanced scan, and more"
-          onPress={() =>
-            Alert.alert(
-              "Premium",
-              "Premium features coming soon.\n\n• Smart grocery list\n• 2x Scan rewards\n• Unlimited scans per day\n• 10/recipes a day\n",
-            )
-          }
+          title="KitchenBuddy Premium"
+          subtitle="Advanced recipes, smart grocery lists, and analytics"
+          onPress={() => router.push("/settings/premium")}
           right={
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Text
@@ -592,8 +587,9 @@ export default function SettingsScreen() {
                   { marginRight: 6, color: Colors.primary },
                 ]}
               >
-                Coming soon
+                Premium
               </Text>
+
               <Ionicons
                 name="chevron-forward"
                 size={18}
@@ -605,16 +601,18 @@ export default function SettingsScreen() {
 
         <Row
           icon="analytics-outline"
-          title="Analytics (Premium)"
-          subtitle="Trends on waste, savings, and scan accuracy"
-          onPress={() =>
-            Alert.alert(
-              "Analytics",
-              "Premium feature (placeholder).\n\nExamples:\n• $ saved estimate\n• Items trashed vs used\n• Top expiring categories\n• Correction rate over time",
-            )
-          }
+          title="Analytics"
+          subtitle="Understand your pantry and food usage"
+          onPress={() => router.push("/settings/premium")}
           right={
             <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={14}
+                color={Colors.primary}
+                style={{ marginRight: 6 }}
+              />
+
               <Text
                 style={[
                   TextStyles.small,
@@ -623,6 +621,7 @@ export default function SettingsScreen() {
               >
                 Premium
               </Text>
+
               <Ionicons
                 name="chevron-forward"
                 size={18}
@@ -634,9 +633,14 @@ export default function SettingsScreen() {
 
         <Row
           icon="key-outline"
-          title="Restore purchase"
-          subtitle="If you bought Premium before"
-          onPress={() => Alert.alert("Restore", "Placeholder.")}
+          title="Restore Purchase"
+          subtitle="Restore a previous Premium subscription"
+          onPress={() =>
+            Alert.alert(
+              "Restore Purchase",
+              "Premium subscriptions are not available yet.",
+            )
+          }
           right={
             <Ionicons
               name="chevron-forward"

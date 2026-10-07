@@ -13,7 +13,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSettingsStore } from "@/features/settings/store"; // 👈 import settings store
 import { toastConfig } from "@/components/kitchentoast";
-
+import { PremiumProvider } from "@/context/PremiumContext";
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -34,6 +34,7 @@ if (__DEV__) {
       await AsyncStorage.removeItem("pantry_items_v1");
       console.log("pantry_items_v1 removed");
     },
+
     async clearAll() {
       const AsyncStorage = (
         await import("@react-native-async-storage/async-storage")
@@ -63,19 +64,27 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="add-item"
-            options={{ presentation: "modal", title: "Add item" }}
-          />
-        </Stack>
+      <PremiumProvider>
+        <ThemeProvider
+          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-        <StatusBar style="auto" />
+            <Stack.Screen
+              name="add-item"
+              options={{
+                presentation: "modal",
+                title: "Add item",
+              }}
+            />
+          </Stack>
 
-        <Toast config={toastConfig} />
-      </ThemeProvider>
+          <StatusBar style="auto" />
+
+          <Toast config={toastConfig} />
+        </ThemeProvider>
+      </PremiumProvider>
     </GestureHandlerRootView>
   );
 }

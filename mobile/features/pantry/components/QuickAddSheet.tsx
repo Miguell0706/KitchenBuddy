@@ -20,13 +20,15 @@ import {
   ButtonStyles,
 } from "@/constants/styles";
 import type { CategoryKey } from "@/features/pantry/types";
-import { usePantryStore } from "@/features/pantry/store"; // adjust path
+import { usePantryStore } from "@/features/pantry/store";
 import { useDefaultExpiry } from "@/features/pantry/useDefaultExpiry";
+import { appendPantryHistory } from "@/features/pantry/history";
 
 type Props = {
   open: boolean;
   onClose: () => void;
 };
+
 // If you already have a CATEGORIES constant elsewhere, import it instead.
 const CATEGORY_OPTIONS: {
   key: CategoryKey;
@@ -45,6 +47,7 @@ const CATEGORY_OPTIONS: {
   { key: "snacks", label: "Snacks", icon: "pizza-outline" },
   { key: "pet", label: "Pet", icon: "paw-outline" },
 ];
+
 function isoDateDaysFromNow(days: number): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -56,6 +59,7 @@ function isoDateDaysFromNow(days: number): string {
 
   return `${year}-${month}-${day}`;
 }
+
 export function QuickAddSheet({ open, onClose }: Props) {
   const quickAddItem = usePantryStore((s) => s.addItem);
 
@@ -63,7 +67,7 @@ export function QuickAddSheet({ open, onClose }: Props) {
   const [categoryKey, setCategoryKey] = useState<CategoryKey>("produce");
   const [catOpen, setCatOpen] = useState(false);
 
-  // 👇 call hook here, using the current categoryKey
+  // Call hook here, using the current categoryKey
   const defaultExpiry = useDefaultExpiry(categoryKey);
 
   useEffect(() => {
@@ -82,18 +86,23 @@ export function QuickAddSheet({ open, onClose }: Props) {
     const normalizedName = name.trim().slice(0, 40);
     if (!normalizedName) return;
 
-    const d = defaultExpiry; // number | "none"
+    const d = defaultExpiry;
 
     const expiresInDays = d === "none" ? 9999 : d;
     const expiryDate = d === "none" ? null : isoDateDaysFromNow(expiresInDays);
 
-    quickAddItem(categoryKey, {
+    const newItem = {
       id: nanoid(),
       name: normalizedName,
       quantity: "",
       categoryKey,
       expiryDate,
-    });
+      addedAt: Date.now(),
+    };
+
+    quickAddItem(categoryKey, newItem);
+
+    void appendPantryHistory(newItem, "added", "quickAdd");
 
     onClose();
   };
