@@ -603,7 +603,7 @@ export default function SettingsScreen() {
           icon="analytics-outline"
           title="Analytics"
           subtitle="Understand your pantry and food usage"
-          onPress={() => router.push("/settings/premium")}
+          onPress={() => router.push("/settings/pantry-analytics")}
           right={
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons
