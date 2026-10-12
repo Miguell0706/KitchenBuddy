@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
+
 import {
   View,
   Text,
@@ -9,9 +10,13 @@ import {
   TextInput,
   StyleSheet,
 } from "react-native";
+
 import * as Haptics from "expo-haptics";
+
 import { Ionicons } from "@expo/vector-icons";
+
 import { router } from "expo-router";
+
 import {
   Screen,
   TextStyles,
@@ -19,27 +24,40 @@ import {
   Layout,
   ButtonStyles,
 } from "@/constants/styles";
+
 import {
   CATEGORIES,
   ALL_CATEGORY_KEYS,
   setAllCategories,
 } from "@/features/pantry/constants";
+
 import { PantryRow } from "@/features/pantry/components/PantryRow";
+
 import type { PantryItem, CategoryKey } from "@/features/pantry/types";
+
 import {
   matchesQuery,
   getExpiresInDays,
   setExpiryDaysFromToday,
   addDaysToExpiryDate,
 } from "@/features/pantry/utils";
+
 import { usePantryStore } from "@/features/pantry/store";
+
 import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
+
 import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
+
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
+
 import { Colors, Spacing } from "@/constants/theme";
+
 import { BulkExpirySheet } from "@/features/pantry/components/BulkExpirySheet";
+
 import { BulkMoveSheet } from "@/features/pantry/components/BulkMoveSheet";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
 import {
   appendPantryHistory,
   removePantryHistoryEntry,
@@ -49,16 +67,20 @@ const PANTRY_KEY = "pantry_items_v1";
 
 type ExpiringRow = PantryItem & {
   categoryLabel: string;
-  expiresInDays: number; // derived
+
+  expiresInDays: number; // derived*
 };
+
 type Category = (typeof CATEGORIES)[number];
 
 function buildEmptyPantry(): Record<CategoryKey, PantryItem[]> {
   return ALL_CATEGORY_KEYS.reduce(
     (acc, k) => {
       acc[k] = [];
+
       return acc;
     },
+
     {} as Record<CategoryKey, PantryItem[]>,
   );
 }
@@ -67,72 +89,109 @@ function isValidPantryShape(
   v: unknown,
 ): v is Record<CategoryKey, PantryItem[]> {
   if (!v || typeof v !== "object") return false;
+
   const obj = v as Record<string, unknown>;
+
   return ALL_CATEGORY_KEYS.every((k) => Array.isArray(obj[k]));
 }
 
 export default function PantryScreen() {
   const [bulkExpiryOpen, setBulkExpiryOpen] = useState(false);
+
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
 
   const pantry = usePantryStore((s) => s.pantry);
+
   const setPantry = usePantryStore((s) => s.setPantry);
 
   const [undo, setUndo] = useState<{
     item: PantryItem;
+
     categoryKey: CategoryKey;
+
     index: number;
+
     action: "removed" | "expired" | "used";
+
     historyEntryId?: string;
+    operationId: number;
   } | null>(null);
 
+  const nextUndoOperationId = useRef(0);
+  const pendingHistoryWrites = useRef(new Map<number, Promise<string>>());
+  const undoInProgress = useRef(false);
+
   const [openExpiring, setOpenExpiring] = useState(true);
+
   const [openExpired, setOpenExpired] = useState(true);
+
   const [pantryLoaded, setPantryLoaded] = useState(false);
+
   const [openCategories, setOpenCategories] = useState<
     Record<CategoryKey, boolean>
   >({
     produce: true,
+
     meatSeafood: true,
+
     dairyEggs: false,
+
     bakery: false,
+
     pantry: false,
+
     frozen: false,
+
     condiments: false,
+
     spices: false,
+
     beverages: false,
+
     snacks: false,
+
     pet: false,
   });
 
   const [bulkMode, setBulkMode] = useState(false);
+
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+
   const [editOpen, setEditOpen] = useState(false);
+
   const [editTarget, setEditTarget] = useState<{
     id: string;
+
     categoryKey: CategoryKey;
   } | null>(null);
 
-  // selected ids per category (so ids can collide across categories safely)
+  // selected ids per category (so ids can collide across categories safely)*
+
   const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
     () =>
       ALL_CATEGORY_KEYS.reduce(
         (acc, k) => {
           acc[k] = new Set<string>();
+
           return acc;
         },
+
         {} as Record<CategoryKey, Set<string>>,
       ),
   );
 
-  // ✅ Search
+  // ✅ Search*
+
   const [searchQuery, setSearchQuery] = useState("");
+
   const q = searchQuery.trim().toLowerCase();
+
   const isSearching = q.length > 0;
 
   const allOpen = ALL_CATEGORY_KEYS.every((k) => openCategories[k]);
 
-  // -------------------- ✅ AsyncStorage (load) --------------------
+  // -------------------- ✅ AsyncStorage (load) --------------------*
+
   useEffect(() => {
     let cancelled = false;
 
@@ -167,7 +226,8 @@ export default function PantryScreen() {
     };
   }, [setPantry]);
 
-  // -------------------- ✅ AsyncStorage (save) --------------------
+  // -------------------- ✅ AsyncStorage (save) --------------------*
+
   useEffect(() => {
     if (!pantryLoaded) return;
 
@@ -186,16 +246,26 @@ export default function PantryScreen() {
     return () => clearTimeout(t);
   }, [pantry, pantryLoaded]);
 
-  // -------------------- Undo timer --------------------
+  // -------------------- Undo timer --------------------*
+
   useEffect(() => {
     if (!undo) return;
-    const t = setTimeout(() => setUndo(null), 4000);
+
+    const t = setTimeout(() => {
+      pendingHistoryWrites.current.delete(undo.operationId);
+      setUndo((current) =>
+        current?.operationId === undo.operationId ? null : current,
+      );
+    }, 4000);
+
     return () => clearTimeout(t);
   }, [undo]);
 
   const selectedCount = useMemo(() => {
     let n = 0;
+
     for (const k of ALL_CATEGORY_KEYS) n += selected[k].size;
+
     return n;
   }, [selected]);
 
@@ -204,8 +274,10 @@ export default function PantryScreen() {
       ALL_CATEGORY_KEYS.reduce(
         (acc, k) => {
           acc[k] = new Set<string>();
+
           return acc;
         },
+
         {} as Record<CategoryKey, Set<string>>,
       ),
     );
@@ -214,7 +286,9 @@ export default function PantryScreen() {
   const toggleBulkMode = () => {
     setBulkMode((v) => {
       const next = !v;
+
       if (!next) clearSelection();
+
       return next;
     });
   };
@@ -225,87 +299,132 @@ export default function PantryScreen() {
   const toggleSelected = (categoryKey: CategoryKey, id: string) => {
     setSelected((prev) => {
       const next: Record<CategoryKey, Set<string>> = { ...prev };
+
       const set = new Set(next[categoryKey]);
+
       if (set.has(id)) set.delete(id);
       else set.add(id);
+
       next[categoryKey] = set;
+
       return next;
     });
   };
-  async function handleMarkUsed(item: PantryItem) {
-    markUsed(item.categoryKey, item.id);
 
-    const historyEntryId = await appendPantryHistory(item, "used");
+  // Track the history write by operation, not item ID. The same item may be
+  // removed, restored, and removed again before an earlier write completes.
+  function recordUndoableRemoval(
+    item: PantryItem,
+    action: "used" | "removed" | "expired",
+  ) {
+    const operationId = ++nextUndoOperationId.current;
+    const currentList = usePantryStore.getState().pantry[item.categoryKey];
+    const index = currentList.findIndex((entry) => entry.id === item.id);
+    if (index === -1) return;
 
-    setUndo((u) =>
-      u && u.item.id === item.id && u.categoryKey === item.categoryKey
-        ? { ...u, historyEntryId }
-        : u,
-    );
+    setUndo({
+      item,
+      categoryKey: item.categoryKey,
+      index,
+      action,
+      operationId,
+    });
+    setPantry((prev) => ({
+      ...prev,
+      [item.categoryKey]: prev[item.categoryKey].filter(
+        (entry) => entry.id !== item.id,
+      ),
+    }));
+
+    // Store the promise immediately so an immediate Undo can await it.
+    pendingHistoryWrites.current.clear();
+    const write = appendPantryHistory(item, action);
+    pendingHistoryWrites.current.set(operationId, write);
+    void write
+      .then((historyEntryId) => {
+        setUndo((current) =>
+          current?.operationId === operationId
+            ? { ...current, historyEntryId }
+            : current,
+        );
+      })
+      .catch((error) => console.warn("Failed to record pantry history", error));
   }
 
-  async function handleRemove(item: PantryItem, reason: "removed" | "expired") {
-    deleteItem(item.categoryKey, item.id, reason);
+  function handleMarkUsed(item: PantryItem) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    recordUndoableRemoval(item, "used");
+  }
 
-    const historyEntryId = await appendPantryHistory(item, reason);
-
-    setUndo((u) =>
-      u && u.item.id === item.id && u.categoryKey === item.categoryKey
-        ? { ...u, historyEntryId }
-        : u,
-    );
+  function handleRemove(item: PantryItem, reason: "removed" | "expired") {
+    recordUndoableRemoval(item, reason);
   }
 
   const bulkDeleteSelected = () => {
     setUndo(null);
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // 1) Capture the items being deleted (BEFORE setPantry changes state)
+    // 1) Capture the items being deleted (BEFORE setPantry changes state)*
+
     const deleted: PantryItem[] = [];
+
     for (const k of ALL_CATEGORY_KEYS) {
       console.log(selected[k]);
+
       if (selected[k].size === 0) continue;
+
       for (const it of pantry[k]) {
         if (selected[k].has(it.id)) deleted.push(it);
       }
     }
 
-    // 2) Update pantry
+    // 2) Update pantry*
+
     setPantry((prev) => {
       const next: Record<CategoryKey, PantryItem[]> = { ...prev };
+
       for (const k of ALL_CATEGORY_KEYS) {
         if (selected[k].size === 0) continue;
+
         next[k] = prev[k].filter((it) => !selected[k].has(it.id));
       }
+
       return next;
     });
 
-    // 3) Write history entries (don’t await; your queue handles ordering)
+    // 3) Write history entries (don’t await; your queue handles ordering)*
+
     for (const it of deleted) {
       void appendPantryHistory(it, "removed");
     }
 
     clearSelection();
+
     setBulkMode(false);
   };
 
   const applyToSelected = (
     updater: (item: PantryItem, categoryKey: CategoryKey) => PantryItem | null,
+
     moveToCategoryKey?: CategoryKey,
   ) => {
     setPantry((prev) => {
       const next: Record<CategoryKey, PantryItem[]> = { ...prev };
+
       const moved: PantryItem[] = [];
 
       for (const k of ALL_CATEGORY_KEYS) {
         if (selected[k].size === 0) continue;
 
         const list = prev[k];
+
         const out: PantryItem[] = [];
 
         for (const it of list) {
           if (!selected[k].has(it.id)) {
             out.push(it);
+
             continue;
           }
 
@@ -328,53 +447,67 @@ export default function PantryScreen() {
     });
 
     clearSelection();
+
     setBulkMode(false);
   };
 
   const bulkMarkUsed = () => {
     setUndo(null);
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // capture items BEFORE mutation
+    // capture items BEFORE mutation*
+
     const used: PantryItem[] = [];
+
     for (const k of ALL_CATEGORY_KEYS) {
       if (selected[k].size === 0) continue;
+
       for (const it of pantry[k]) {
         if (selected[k].has(it.id)) used.push(it);
       }
     }
 
-    // perform the actual update
+    // perform the actual update*
+
     applyToSelected(() => null);
 
-    // write history
+    // write history*
+
     for (const it of used) {
-      appendPantryHistory(it, "used"); // <- use your real action value
+      appendPantryHistory(it, "used"); // <- use your real action value*
     }
 
     clearSelection();
+
     setBulkMode(false);
   };
 
   const bulkAddExpiryDays = (delta: number) => {
     Haptics.selectionAsync();
+
     applyToSelected((it) => ({
       ...it,
+
       expiryDate: addDaysToExpiryDate(it.expiryDate, delta),
     }));
   };
 
   const bulkSetExpiryDays = (value: number) => {
     Haptics.selectionAsync();
+
     applyToSelected((it) => ({
       ...it,
-      // If it had "no expiry", keep it no expiry (matches your old sentinel behavior)
+
+      // If it had "no expiry", keep it no expiry (matches your old sentinel behavior)*
+
       expiryDate: it.expiryDate ? setExpiryDaysFromToday(value) : null,
     }));
   };
 
   const openEdit = (categoryKey: CategoryKey, id: string) => {
     setEditTarget({ categoryKey, id });
+
     setEditOpen(true);
   };
 
@@ -382,19 +515,27 @@ export default function PantryScreen() {
     Alert.alert("Remove item", "What happened to this item?", [
       {
         text: "Used",
+
         onPress: () => handleMarkUsed(item),
       },
+
       {
         text: "Expired / Thrown Away",
+
         onPress: () => handleRemove(item, "expired"),
       },
+
       {
         text: "Remove",
+
         style: "destructive",
+
         onPress: () => handleRemove(item, "removed"),
       },
+
       {
         text: "Cancel",
+
         style: "cancel",
       },
     ]);
@@ -402,8 +543,11 @@ export default function PantryScreen() {
 
   const toggleAll = () => {
     const nextOpen = !allOpen;
+
     setOpenCategories(setAllCategories(nextOpen));
+
     setOpenExpiring(nextOpen);
+
     setOpenExpired(nextOpen);
   };
 
@@ -411,60 +555,61 @@ export default function PantryScreen() {
     setOpenCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const deleteItem = (
-    categoryKey: CategoryKey,
-    itemId: string,
-    action: "removed" | "expired" | "used" = "removed",
-  ) => {
-    setPantry((prev) => {
-      const list = prev[categoryKey];
-      const index = list.findIndex((x) => x.id === itemId);
-      if (index === -1) return prev;
-
-      const item = list[index];
-      setUndo({ item, categoryKey, index, action });
-
-      const nextList = list.filter((x) => x.id !== itemId);
-      return { ...prev, [categoryKey]: nextList };
-    });
-  };
-
-  const markUsed = (categoryKey: CategoryKey, id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    deleteItem(categoryKey, id, "used");
-  };
-
   const undoDelete = async () => {
-    if (!undo) return;
+    const current = undo;
+    if (!current || undoInProgress.current) return;
+    undoInProgress.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    setPantry((prev) => {
-      const list = prev[undo.categoryKey];
-      const nextList = list.slice();
-      nextList.splice(undo.index, 0, undo.item);
-      return { ...prev, [undo.categoryKey]: nextList };
-    });
-
-    // ✅ undo the history record (only if we have the id)
-    if (undo.historyEntryId) {
-      await removePantryHistoryEntry(undo.historyEntryId);
-    }
-
+    // Hide Undo while processing; restore it if the history cleanup fails.
     setUndo(null);
+    try {
+      const write = pendingHistoryWrites.current.get(current.operationId);
+      const historyEntryId = write ? await write : current.historyEntryId;
+      if (!historyEntryId) throw new Error("Missing history entry for Undo");
+      await removePantryHistoryEntry(historyEntryId);
+      pendingHistoryWrites.current.delete(current.operationId);
+
+      setPantry((prev) => {
+        const list = prev[current.categoryKey];
+        if (list.some((entry) => entry.id === current.item.id)) return prev;
+        const nextList = list.slice();
+        nextList.splice(
+          Math.min(current.index, nextList.length),
+          0,
+          current.item,
+        );
+        return { ...prev, [current.categoryKey]: nextList };
+      });
+    } catch (error) {
+      console.warn("Unable to undo pantry removal", error);
+      setUndo(current);
+      Alert.alert(
+        "Undo failed",
+        "Could not reverse the pantry history change. Please try again.",
+      );
+    } finally {
+      undoInProgress.current = false;
+    }
   };
 
   const deleteAllExpired = () => {
     Alert.alert(
       "Delete all expired?",
+
       "This will permanently remove all expired items.",
+
       [
         { text: "Cancel", style: "cancel" },
+
         {
           text: "Delete",
+
           style: "destructive",
+
           onPress: () => {
-            // Capture the expired items before removing them
+            // Capture the expired items before removing them*
+
             const itemsToExpire = [...expiredItems];
 
             setPantry((prev) => {
@@ -479,7 +624,8 @@ export default function PantryScreen() {
               return next;
             });
 
-            // Record each removed item as expired for history/analytics
+            // Record each removed item as expired for history/analytics*
+
             for (const item of itemsToExpire) {
               void appendPantryHistory(item, "expired");
             }
@@ -488,6 +634,7 @@ export default function PantryScreen() {
       ],
     );
   };
+
   const remindLater = () => {
     setPantry((prev) => {
       const next = { ...prev };
@@ -505,12 +652,15 @@ export default function PantryScreen() {
   };
 
   const openBulkExpiryMenu = () => setBulkExpiryOpen(true);
+
   const openBulkMoveMenu = () => setBulkMoveOpen(true);
 
   const bulkMoveTo = (dest: CategoryKey) => {
     Haptics.selectionAsync();
+
     applyToSelected((it) => it, dest);
   };
+
   type MenuCategory =
     | { type: "normal"; cat: Category }
     | { type: "expired" }
@@ -519,15 +669,19 @@ export default function PantryScreen() {
   const showCategoryMenu = (menu: MenuCategory) => {
     if (menu.type === "normal") {
       const { cat } = menu;
+
       Alert.alert(cat.label, "Category options", [
         {
           text: "Clear category (remove all items)",
+
           style: "destructive",
+
           onPress: () => {
             const removedItems = [...pantry[cat.key]];
 
             setPantry((prev) => ({
               ...prev,
+
               [cat.key]: [],
             }));
 
@@ -536,8 +690,10 @@ export default function PantryScreen() {
             }
           },
         },
+
         { text: "Cancel", style: "cancel" },
       ]);
+
       return;
     }
 
@@ -545,26 +701,34 @@ export default function PantryScreen() {
       Alert.alert("Expired", "Category options", [
         {
           text: "Delete all expired",
+
           style: "destructive",
+
           onPress: deleteAllExpired,
         },
+
         { text: "Cancel", style: "cancel" },
       ]);
+
       return;
     }
 
     Alert.alert("Expiring soon", "Category options", [
       { text: "Remind later (+3 days)", onPress: remindLater },
+
       { text: "Cancel", style: "cancel" },
     ]);
   };
 
-  // ✅ Expired filtered by search
+  // ✅ Expired filtered by search*
+
   const expiredItems: ExpiringRow[] = useMemo(() => {
     const byKey = new Map<CategoryKey, string>();
+
     CATEGORIES.forEach((c) => byKey.set(c.key, c.label));
 
     const flat: ExpiringRow[] = [];
+
     for (const key of ALL_CATEGORY_KEYS) {
       for (const item of pantry[key]) {
         const d = getExpiresInDays(item);
@@ -572,8 +736,11 @@ export default function PantryScreen() {
         if (d <= 0 && matchesQuery(item, q)) {
           flat.push({
             ...item,
-            expiresInDays: d, // keep this in the row if UI uses it
+
+            expiresInDays: d, // keep this in the row if UI uses it*
+
             categoryKey: key,
+
             categoryLabel: byKey.get(key) ?? key,
           });
         }
@@ -581,34 +748,45 @@ export default function PantryScreen() {
     }
 
     flat.sort((a, b) => b.expiresInDays - a.expiresInDays);
+
     return flat;
   }, [pantry, q]);
 
-  // ✅ Expiring soon filtered by search
+  // ✅ Expiring soon filtered by search*
+
   const expiringSoon: ExpiringRow[] = useMemo(() => {
     const byKey = new Map<CategoryKey, string>();
+
     CATEGORIES.forEach((c) => byKey.set(c.key, c.label));
 
     const flat: ExpiringRow[] = [];
+
     for (const key of ALL_CATEGORY_KEYS) {
       for (const item of pantry[key]) {
         const d = getExpiresInDays(item);
 
-        if (d >= 9999) continue; // no expiry
-        if (d <= 0) continue; // expired → goes to exp iredItems
-        if (d > 7) continue; // out of “soon” window
+        if (d >= 9999) continue; // no expiry*
+
+        if (d <= 0) continue; // expired → goes to exp iredItems*
+
+        if (d > 7) continue; // out of “soon” window*
+
         if (!matchesQuery(item, q)) continue;
 
         flat.push({
           ...item,
-          expiresInDays: d, // again, keep it updated if needed
+
+          expiresInDays: d, // again, keep it updated if needed*
+
           categoryKey: key,
+
           categoryLabel: byKey.get(key) ?? key,
         });
       }
     }
 
     flat.sort((a, b) => a.expiresInDays - b.expiresInDays);
+
     return flat;
   }, [pantry, q]);
 
@@ -617,7 +795,9 @@ export default function PantryScreen() {
 
     setOpenCategories((prev) => {
       const next = { ...prev };
+
       for (const c of CATEGORIES) next[c.key] = true;
+
       return next;
     });
   }, [isSearching]);
@@ -625,12 +805,15 @@ export default function PantryScreen() {
   const visibleCategories = useMemo(() => {
     return CATEGORIES.map((cat) => {
       const items = pantry[cat.key].filter((it) => matchesQuery(it, q));
+
       return { cat, items };
     }).filter(({ items }) => {
       if (!isSearching) return true;
+
       return items.length > 0;
     });
   }, [pantry, q, isSearching]);
+
   return (
     <View style={Screen.full}>
       <ScrollView
@@ -639,9 +822,11 @@ export default function PantryScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         {/* Header row */}
+
         <View style={[Layout.rowBetween, styles.headerRow]}>
           <View style={styles.headerLeft}>
             <Text style={TextStyles.screenTitle}>Pantry</Text>
+
             <Text style={TextStyles.bodyMuted}>
               Track what you have before it goes bad.
             </Text>
@@ -659,12 +844,14 @@ export default function PantryScreen() {
                 color="#FFFFFF"
                 style={styles.addIcon}
               />
+
               <Text style={ButtonStyles.primaryText}>Add item</Text>
             </View>
           </TouchableOpacity>
         </View>
 
         {/* Search bar */}
+
         <View style={styles.searchWrap}>
           <View style={styles.searchRelative}>
             <Ionicons
@@ -673,6 +860,7 @@ export default function PantryScreen() {
               color={Colors.textLight}
               style={styles.searchIcon}
             />
+
             <TextInput
               placeholder="Search pantry…"
               placeholderTextColor={Colors.textLight}
@@ -705,13 +893,16 @@ export default function PantryScreen() {
         </View>
 
         {/* Pills */}
+
         <View style={styles.pillsRow}>
           {/* Bulk */}
+
           <TouchableOpacity
             onPress={toggleBulkMode}
             activeOpacity={0.85}
             style={[
               styles.pill,
+
               bulkMode ? styles.pillActive : styles.pillInactive,
             ]}
           >
@@ -720,24 +911,28 @@ export default function PantryScreen() {
               size={18}
               color={Colors.text}
             />
+
             <Text style={styles.pillText} numberOfLines={1}>
               {bulkMode ? `Bulk ${selectedCount}` : "Bulk"}
             </Text>
           </TouchableOpacity>
 
           {/* Quick add */}
+
           <TouchableOpacity
             onPress={() => setQuickAddOpen(true)}
             activeOpacity={0.85}
             style={[styles.pill, styles.pillInactive]}
           >
             <Ionicons name="add" size={18} color={Colors.text} />
+
             <Text style={styles.pillText} numberOfLines={1}>
               Add
             </Text>
           </TouchableOpacity>
 
           {/* Expand / Collapse */}
+
           <TouchableOpacity
             onPress={toggleAll}
             activeOpacity={0.85}
@@ -748,6 +943,7 @@ export default function PantryScreen() {
               size={18}
               color={Colors.text}
             />
+
             <Text style={styles.pillText} numberOfLines={1}>
               {allOpen ? "Collapse" : "Expand"}
             </Text>
@@ -755,6 +951,7 @@ export default function PantryScreen() {
         </View>
 
         {/* Expired */}
+
         {expiredItems.length > 0 && (
           <View style={styles.sectionWrap}>
             <TouchableOpacity
@@ -762,7 +959,9 @@ export default function PantryScreen() {
               onPress={() => setOpenExpired((v) => !v)}
               style={[
                 CardStyles.subtle,
+
                 Layout.rowBetween,
+
                 styles.expiredHeaderCard,
               ]}
             >
@@ -773,10 +972,12 @@ export default function PantryScreen() {
                   color={"rgba(60,60,60,0.85)"}
                   style={styles.sectionIcon}
                 />
+
                 <View>
                   <Text style={[TextStyles.sectionTitle, styles.expiredTitle]}>
                     Expired
                   </Text>
+
                   <Text style={TextStyles.small}>
                     {expiredItems.length} item
                     {expiredItems.length === 1 ? "" : "s"}
@@ -788,8 +989,10 @@ export default function PantryScreen() {
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={(e) => {
-                    // @ts-ignore
+                    // @ts-ignore*
+
                     e?.stopPropagation?.();
+
                     showCategoryMenu({ type: "expired" });
                   }}
                   style={styles.menuBtn}
@@ -822,6 +1025,7 @@ export default function PantryScreen() {
                     checked={isSelected(item.categoryKey, item.id)}
                     onToggleSelect={() => {
                       Haptics.selectionAsync();
+
                       toggleSelected(item.categoryKey, item.id);
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
@@ -836,6 +1040,7 @@ export default function PantryScreen() {
         )}
 
         {/* Expiring soon */}
+
         {expiringSoon.length > 0 && (
           <View style={styles.sectionWrap}>
             <TouchableOpacity
@@ -843,7 +1048,9 @@ export default function PantryScreen() {
               onPress={() => setOpenExpiring((v) => !v)}
               style={[
                 CardStyles.subtle,
+
                 Layout.rowBetween,
+
                 styles.expiringHeaderCard,
               ]}
             >
@@ -854,10 +1061,12 @@ export default function PantryScreen() {
                   color={"rgba(140, 70, 0, 0.95)"}
                   style={styles.sectionIcon}
                 />
+
                 <View>
                   <Text style={[TextStyles.sectionTitle, styles.expiringTitle]}>
                     Expiring soon
                   </Text>
+
                   <Text style={TextStyles.small}>
                     {expiringSoon.length} item
                     {expiringSoon.length === 1 ? "" : "s"}
@@ -869,8 +1078,10 @@ export default function PantryScreen() {
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={(e) => {
-                    // @ts-ignore
+                    // @ts-ignore*
+
                     e?.stopPropagation?.();
+
                     showCategoryMenu({ type: "expiring" });
                   }}
                   style={styles.menuBtn}
@@ -903,11 +1114,12 @@ export default function PantryScreen() {
                     checked={isSelected(item.categoryKey, item.id)}
                     onToggleSelect={() => {
                       Haptics.selectionAsync();
+
                       toggleSelected(item.categoryKey, item.id);
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm*
                     onSwipeDelete={() => handleRemove(item, "removed")}
                   />
                 ))}
@@ -917,8 +1129,10 @@ export default function PantryScreen() {
         )}
 
         {/* Categories */}
+
         {visibleCategories.map(({ cat, items }) => {
           const isOpen = openCategories[cat.key];
+
           return (
             <View key={cat.key} style={styles.sectionWrap}>
               <TouchableOpacity
@@ -926,8 +1140,11 @@ export default function PantryScreen() {
                 onPress={() => toggleCategory(cat.key)}
                 style={[
                   CardStyles.subtle,
+
                   Layout.rowBetween,
+
                   styles.categoryHeaderCard,
+
                   isSearching ? styles.categoryHeaderSearching : null,
                 ]}
               >
@@ -938,8 +1155,10 @@ export default function PantryScreen() {
                     color={Colors.text}
                     style={styles.sectionIcon}
                   />
+
                   <View>
                     <Text style={TextStyles.sectionTitle}>{cat.label}</Text>
+
                     <Text style={TextStyles.small}>
                       {items.length} item{items.length === 1 ? "" : "s"}
                       {isSearching && pantry[cat.key].length !== items.length
@@ -953,8 +1172,10 @@ export default function PantryScreen() {
                   <TouchableOpacity
                     activeOpacity={0.7}
                     onPress={(e) => {
-                      // @ts-ignore
+                      // @ts-ignore*
+
                       e?.stopPropagation?.();
+
                       showCategoryMenu({ type: "normal", cat });
                     }}
                     style={styles.menuBtn}
@@ -979,8 +1200,11 @@ export default function PantryScreen() {
               {isOpen && items.length > 0 && (
                 <View style={styles.sectionListTop}>
                   {items
+
                     .slice()
+
                     .sort((a, b) => getExpiresInDays(a) - getExpiresInDays(b))
+
                     .map((item) => (
                       <PantryRow
                         key={`${cat.key}:${item.id}`}
@@ -990,6 +1214,7 @@ export default function PantryScreen() {
                         checked={isSelected(cat.key, item.id)}
                         onToggleSelect={() => {
                           Haptics.selectionAsync();
+
                           toggleSelected(cat.key, item.id);
                         }}
                         onPressUsed={() => handleMarkUsed(item)}
@@ -1013,6 +1238,7 @@ export default function PantryScreen() {
         })}
 
         {/* empty search state */}
+
         {isSearching &&
           expiredItems.length === 0 &&
           expiringSoon.length === 0 &&
@@ -1027,6 +1253,7 @@ export default function PantryScreen() {
         <View
           style={[
             styles.bulkBar,
+
             { bottom: undo ? Spacing.lg + 56 : Spacing.lg },
           ]}
         >
@@ -1059,12 +1286,17 @@ export default function PantryScreen() {
             onPress={() => {
               Alert.alert(
                 "Delete selected?",
+
                 `Delete ${selectedCount} items?`,
+
                 [
                   { text: "Cancel", style: "cancel" },
+
                   {
                     text: "Delete",
+
                     style: "destructive",
+
                     onPress: bulkDeleteSelected,
                   },
                 ],
@@ -1118,6 +1350,7 @@ export default function PantryScreen() {
         open={editOpen}
         onClose={() => {
           setEditOpen(false);
+
           setEditTarget(null);
         }}
         target={editTarget}
@@ -1125,116 +1358,187 @@ export default function PantryScreen() {
     </View>
   );
 }
+
 /* -------------------- Styles -------------------- */
+
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
+
   scrollContent: {
     paddingHorizontal: Spacing.lg,
+
     paddingTop: Spacing.lg,
+
     paddingBottom: Spacing.xl,
   },
 
   headerRow: { marginBottom: Spacing.lg, columnGap: Spacing.md },
+
   headerLeft: { flex: 1, paddingRight: Spacing.sm },
+
   addBtn: { flexShrink: 0 },
+
   addIcon: { marginRight: 4 },
 
   searchWrap: { marginBottom: Spacing.md },
+
   searchRelative: { position: "relative" },
+
   searchIcon: { position: "absolute", left: 12, top: 12, zIndex: 1 },
+
   searchInput: {
     backgroundColor: "rgba(120,120,120,0.10)",
+
     borderColor: "rgba(120,120,120,0.18)",
+
     borderWidth: 1,
+
     borderRadius: 14,
+
     paddingLeft: 38,
+
     paddingRight: 12,
+
     paddingVertical: 10,
+
     fontSize: 16,
+
     color: Colors.text,
   },
+
   searchMetaRow: { marginTop: 8 },
+
   searchClearBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+
   searchClearText: { fontWeight: "700" },
 
   pillsRow: {
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "center",
+
     marginBottom: Spacing.sm,
   },
+
   pill: {
     flexDirection: "row",
+
     alignItems: "center",
+
     paddingHorizontal: 20,
+
     paddingVertical: 8,
+
     borderRadius: 999,
+
     marginRight: Spacing.xs,
   },
+
   pillLast: { marginRight: 0 },
+
   pillActive: { backgroundColor: "rgba(0,0,0,0.10)" },
+
   pillInactive: { backgroundColor: "rgba(0,0,0,0.05)" },
+
   pillText: { fontSize: 15, marginLeft: 6, color: Colors.text },
 
   sectionWrap: { marginBottom: Spacing.md },
+
   sectionIcon: { marginRight: Spacing.sm },
+
   sectionListTop: { marginTop: Spacing.sm },
 
   menuBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 6 },
 
   expiredHeaderCard: {
     paddingVertical: Spacing.sm,
+
     backgroundColor: "rgba(120, 120, 120, 0.12)",
+
     borderColor: "rgba(120, 120, 120, 0.22)",
+
     borderWidth: 1,
   },
+
   expiredTitle: { color: "rgba(60,60,60,0.9)" },
 
   expiringHeaderCard: {
     paddingVertical: Spacing.sm,
+
     backgroundColor: "rgba(255, 149, 0, 0.14)",
+
     borderColor: "rgba(140, 70, 0, 0.18)",
+
     borderWidth: 1,
   },
+
   expiringTitle: { color: "rgba(140, 70, 0, 0.95)" },
 
   categoryHeaderCard: {
     paddingVertical: Spacing.sm,
   },
+
   categoryHeaderSearching: { opacity: 0.95 },
 
   emptyCatCard: { marginTop: Spacing.sm },
+
   emptySearchCard: { marginTop: Spacing.sm },
 
   bulkBar: {
     position: "absolute",
+
     left: Spacing.lg,
+
     right: Spacing.lg,
+
     padding: Spacing.md,
+
     borderRadius: 18,
+
     backgroundColor: "rgba(20,20,20,0.92)",
+
     flexDirection: "row",
+
     alignItems: "center",
+
     flexWrap: "wrap",
+
     justifyContent: "flex-start",
   },
+
   bulkBarText: { color: "#fff" },
+
   bulkActionBtn: { paddingHorizontal: 10, paddingVertical: 8, marginRight: 6 },
+
   bulkActionText: { color: "#fff", fontWeight: "700" },
 
   undoBar: {
     position: "absolute",
+
     left: Spacing.lg,
+
     right: Spacing.lg,
+
     bottom: Spacing.lg,
+
     padding: Spacing.md,
+
     borderRadius: 16,
+
     backgroundColor: "rgba(20,20,20,0.92)",
+
     flexDirection: "row",
+
     alignItems: "center",
+
     justifyContent: "space-between",
   },
+
   undoText: { color: "#fff", flex: 1 },
+
   undoBtn: { paddingHorizontal: Spacing.md, paddingVertical: 8 },
+
   undoBtnText: { color: "rgba(255,255,255,0.95)", fontWeight: "700" },
 });
