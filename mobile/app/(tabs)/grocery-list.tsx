@@ -11,7 +11,8 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { usePremium } from "@/context/PremiumContext";
 import { Colors, Spacing } from "@/constants/theme";
 import {
   ButtonStyles,
@@ -46,6 +47,8 @@ function uid() {
 }
 
 export default function GroceryListScreen() {
+  const { isPremium, isLoading: premiumLoading } = usePremium();
+  const router = useRouter();
   const [text, setText] = useState("");
   const [items, setItems] = useState<GroceryItem[]>([]);
   const [history, setHistory] = useState<PantryHistoryEntry[]>([]);
@@ -59,11 +62,12 @@ export default function GroceryListScreen() {
       async function load() {
         setLoading(true);
         try {
-          const [raw, events, pantry] = await Promise.all([
-            AsyncStorage.getItem(STORAGE_KEY),
-            getPantryHistory(),
-            loadPantry(),
-          ]);
+          // Grocery list is free. Only Premium loads recommendation inputs.
+          const raw = await AsyncStorage.getItem(STORAGE_KEY);
+          const premiumData =
+            isPremium && !premiumLoading
+              ? await Promise.all([getPantryHistory(), loadPantry()])
+              : null;
           if (!active) return;
           if (raw) {
             const parsed: unknown = JSON.parse(raw);
@@ -72,8 +76,12 @@ export default function GroceryListScreen() {
             setItems([]);
           }
 
-          setHistory(events);
-          setPantryItems(Object.values(pantry).flat() as PantryItem[]);
+          setHistory(premiumData ? premiumData[0] : []);
+          setPantryItems(
+            premiumData
+              ? (Object.values(premiumData[1]).flat() as PantryItem[])
+              : [],
+          );
         } catch (error) {
           console.warn("Unable to load grocery list", error);
           if (active)
@@ -90,7 +98,7 @@ export default function GroceryListScreen() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [isPremium, premiumLoading]),
   );
 
   // Persist each change before reflecting it in the list. This avoids an
@@ -193,7 +201,8 @@ export default function GroceryListScreen() {
   };
 
   const suggestions = useMemo((): Suggestion[] => {
-    if (loading || history.length === 0) return [];
+    if (!isPremium || premiumLoading || loading || history.length === 0)
+      return [];
     const listNames = new Set(items.map((item) => ingredientKey(item.name)));
     const pantryNames = new Set<string>();
     for (const item of pantryItems) {
@@ -280,7 +289,7 @@ export default function GroceryListScreen() {
     }
 
     return result.sort((a, b) => b.priority - a.priority).slice(0, 6);
-  }, [history, pantryItems, items, loading]);
+  }, [history, pantryItems, items, loading, isPremium, premiumLoading]);
   return (
     <View style={{ flex: 1, backgroundColor: Colors.background }}>
       <ScrollView
@@ -361,7 +370,41 @@ export default function GroceryListScreen() {
           <Text style={[TextStyles.small, { marginBottom: Spacing.sm }]}>
             Based on your pantry history. Nothing is added automatically.
           </Text>
-          {loading ? (
+          {premiumLoading ? (
+            <ActivityIndicator color={Colors.primary} />
+          ) : !isPremium ? (
+            <View
+              style={{ alignItems: "center", paddingVertical: 14, gap: 10 }}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={27}
+                color={Colors.primary}
+              />
+              <Text style={[TextStyles.bodyMuted, { textAlign: "center" }]}>
+                Unlock personalized restock suggestions based on your pantry
+                habits with KitchenBuddy Premium.
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Unlock KitchenBuddy Premium"
+                onPress={() => router.push("/settings/premium")}
+                style={[
+                  ButtonStyles.primary,
+                  {
+                    paddingHorizontal: 22,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    marginTop: 4,
+                  },
+                ]}
+              >
+                <Text style={{ color: Colors.background, fontWeight: "700" }}>
+                  Unlock Premium
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : loading ? (
             <ActivityIndicator color={Colors.primary} />
           ) : suggestions.length === 0 ? (
             <Text style={TextStyles.bodyMuted}>

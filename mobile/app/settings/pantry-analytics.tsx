@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { usePremium } from "@/context/PremiumContext";
 import {
   Pressable,
   SafeAreaView,
@@ -6,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, useFocusEffect, useRouter } from "expo-router";
 import {
@@ -55,7 +57,7 @@ function ProgressBar({ percentage }: { percentage: number }) {
     </View>
   );
 }
-export default function PantryAnalyticsScreen() {
+function PantryAnalyticsContent() {
   const [tab, setTab] = useState<AnalyticsTab>("overview");
   const [range, setRange] = useState<AnalyticsRange>("30d");
   const [history, setHistory] = useState<PantryHistoryEntry[]>([]);
@@ -481,6 +483,79 @@ export default function PantryAnalyticsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+export default function PantryAnalyticsScreen() {
+  const { isPremium, isLoading } = usePremium();
+  const router = useRouter();
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Stack.Screen options={{ title: "Pantry Analytics" }} />
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <ActivityIndicator size="large" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isPremium) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Stack.Screen options={{ title: "Premium Feature" }} />
+
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 28,
+            gap: 14,
+          }}
+        >
+          <Text style={{ fontSize: 42 }}>🔒</Text>
+
+          <Text style={styles.title}>Pantry Analytics</Text>
+
+          <Text style={[styles.subtitle, { textAlign: "center" }]}>
+            Unlock food usage trends, waste tracking, purchase habits, and
+            personalized insights with KitchenBuddy Premium.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Unlock KitchenBuddy Premium"
+            onPress={() => router.push("/settings/premium")}
+            style={{
+              backgroundColor: "#171717",
+              paddingVertical: 15,
+              paddingHorizontal: 28,
+              borderRadius: 12,
+              marginTop: 12,
+              minWidth: 220,
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 16,
+                fontWeight: "700",
+              }}
+            >
+              Unlock Premium
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return <PantryAnalyticsContent />;
 }
 const styles = StyleSheet.create({
   safeArea: {
