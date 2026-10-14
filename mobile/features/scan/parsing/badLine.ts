@@ -1,3 +1,10 @@
+/**
+ * Receipt OCR pre-filter. Keep plausible product descriptions for canonicalization,
+ * while rejecting receipt metadata, prices, addresses and identifiers on their own.
+ * This is deliberately conservative: uncertain product text should go to the
+ * canonicalization endpoint, which makes the final item/not_item decision.
+ */
+
 const SECTION_HEADERS = new Set([
   "GROCERY",
   "HOME",
@@ -23,30 +30,84 @@ const DEPTS = new Set([
   "PETS",
 ]);
 
-function upperForChecks(s: string) {
+const STATE_NAMES = [
+  "ALABAMA",
+  "ALASKA",
+  "ARIZONA",
+  "ARKANSAS",
+  "CALIFORNIA",
+  "COLORADO",
+  "CONNECTICUT",
+  "DELAWARE",
+  "FLORIDA",
+  "GEORGIA",
+  "HAWAII",
+  "IDAHO",
+  "ILLINOIS",
+  "INDIANA",
+  "IOWA",
+  "KANSAS",
+  "KENTUCKY",
+  "LOUISIANA",
+  "MAINE",
+  "MARYLAND",
+  "MASSACHUSETTS",
+  "MICHIGAN",
+  "MINNESOTA",
+  "MISSISSIPPI",
+  "MISSOURI",
+  "MONTANA",
+  "NEBRASKA",
+  "NEVADA",
+  "NEW HAMPSHIRE",
+  "NEW JERSEY",
+  "NEW MEXICO",
+  "NEW YORK",
+  "NORTH CAROLINA",
+  "NORTH DAKOTA",
+  "OHIO",
+  "OKLAHOMA",
+  "OREGON",
+  "PENNSYLVANIA",
+  "RHODE ISLAND",
+  "SOUTH CAROLINA",
+  "SOUTH DAKOTA",
+  "TENNESSEE",
+  "TEXAS",
+  "UTAH",
+  "VERMONT",
+  "VIRGINIA",
+  "WASHINGTON",
+  "WEST VIRGINIA",
+  "WISCONSIN",
+  "WYOMING",
+  "DISTRICT OF COLUMBIA",
+];
+
+const STATE_NAME_PATTERN = new RegExp(
+  `\\b(?:${STATE_NAMES.join("|")})\\s+\\d{5}(?:[-\\s]\\d{4})?\\b`,
+);
+
+function upperForChecks(s: string): string {
   return s.toUpperCase().replace(/\s+/g, " ").trim();
 }
 
-function hasWordLikeToken(s: string) {
-  const tokens = s.toUpperCase().split(/\s+/);
-
-  return tokens.some((t) => {
-    const letters = (t.match(/[A-Z]/g) ?? []).length;
-    return letters >= 3;
-  });
+function letterCount(s: string): number {
+  return (s.match(/[A-Z]/g) ?? []).length;
 }
 
-function isDigitsHeavy(s: string) {
-  const digits = (s.match(/\d/g) ?? []).length;
-  const letters = (s.match(/[A-Z]/g) ?? []).length;
-
-  return digits >= 8 && letters < 3;
+function digitCount(s: string): number {
+  return (s.match(/\d/g) ?? []).length;
 }
 
-export function looksLikeStoreMeta(upper: string): boolean {
+function hasWordLikeToken(s: string): boolean {
+  return s.split(/\s+/).some((token) => letterCount(token) >= 3);
+}
+
+export function looksLikeStoreMeta(upperInput: string): boolean {
+  const upper = upperForChecks(upperInput);
   if (!upper) return false;
 
-  // ---- Store branding / headers ----
   if (
     upper.includes("WALMART") ||
     upper.includes("WHOLE FOODS") ||
@@ -59,21 +120,17 @@ export function looksLikeStoreMeta(upper: string): boolean {
     upper.includes("SURVEY") ||
     (upper.includes("STORE") && upper.includes("RECEIPT")) ||
     (upper.includes("CHANCE") && upper.includes("WIN"))
-  ) {
+  )
     return true;
-  }
 
-  // ---- Register / transaction metadata ----
   if (
     upper.startsWith("ST#") ||
     upper.includes("OP#") ||
     upper.includes("TR#") ||
     upper.includes("TE#")
-  ) {
+  )
     return true;
-  }
 
-  // ---- Pricing boilerplate ----
   if (
     upper === "REGULAR PRICE" ||
     upper.startsWith("REGULAR PRICE ") ||
@@ -83,321 +140,182 @@ export function looksLikeStoreMeta(upper: string): boolean {
     upper === "CARD PRICE" ||
     upper === "CARD PRLCE" ||
     upper === "SAVINGS"
-  ) {
+  )
     return true;
-  }
 
-  // ---- Bags / tare ----
-  if (upper.includes("BAG REFUND") || upper === "TARE") {
-    return true;
-  }
-
-  // ---- Department headers ----
-  if (DEPTS.has(upper)) {
-    return true;
-  }
-
-  return false;
+  return upper.includes("BAG REFUND") || upper === "TARE" || DEPTS.has(upper);
 }
 
-function looksLikeAddressOrPhone(upper: string) {
-  // Phone: (555) 123-4567
-  if (/\(\s*\d{3}\s*\)\s*\d{3}\s*-\s*\d{4}/.test(upper)) {
-    return true;
-  }
+/** Phone number requires separators (or parentheses). A bare 9–12 digit SKU
+ * must NEVER count as a phone number. Also allows OCR-spaced final four digits.
+ */
+function looksLikePhone(s: string): boolean {
+  return (
+    /\(\s*\d{3}\s*\)\s*\d{3}[\s.-]*\d{2}\s*\d{2}\b/.test(s) ||
+    /\b\d{3}[-.)\s]+\d{3}[-.)\s]+\d{2}\s*\d{2}\b/.test(s)
+  );
+}
 
-  // Street address
+function looksLikeAddressOrPhone(upper: string): boolean {
+  if (looksLikePhone(upper)) return true;
+
+  // Street lines such as "5959 Poplar Ave".
   if (
-    /^\d{2,6}\s+[A-Z0-9].*\b(ST|STREET|RD|ROAD|AVE|AVENUE|BLVD|DR|DRIVE|LN|LANE|HWY|HIGHWAY)\b/.test(
+    /^\d{1,6}\s+.+\b(?:ST|STREET|RD|ROAD|AVE|AVENUE|BLVD|DR|DRIVE|LN|LANE|HWY|HIGHWAY)\b/.test(
       upper,
     )
   ) {
     return true;
   }
 
-  // City/state/ZIP
-  if (/\b[A-Z]{2}\s+\d{5}(-\d{4})?\b/.test(upper)) {
-    return true;
-  }
+  // City, state abbreviation and ZIP, e.g. "Memphis, TN 38119".
+  if (/\b[A-Z]{2}\s+\d{5}(?:[-\s]\d{4})?\b/.test(upper)) return true;
+
+  // Full state name + ZIP, e.g. "Memphis, Tennessee 38119-3938".
+  if (STATE_NAME_PATTERN.test(upper)) return true;
 
   return false;
 }
 
-function looksLikeTotalsOrPayment(upper: string) {
-  return (
-    upper.includes("SUBTOTAL") ||
-    upper.includes("TOTAL") ||
-    upper.includes("TAX") ||
-    upper.includes("BALANCE") ||
-    upper.includes("CHANGE DUE") ||
-    upper.includes("DEBIT") ||
-    upper.includes("CREDIT") ||
-    upper.includes("VISA") ||
-    upper.includes("MASTERCARD") ||
-    upper.includes("AMEX") ||
-    upper.includes("TEND") ||
-    upper.includes("APPROV") ||
-    upper.includes("AUTH") ||
-    upper.includes("AID:") ||
-    upper.includes("ACCOUNT#") ||
-    upper.includes("REF #") ||
-    upper.includes("NETWORK ID") ||
-    upper.includes("APPR CODE") ||
-    upper.includes("TERMINAL #") ||
-    upper.includes("PAY FROM") ||
-    upper.includes("PAYMENT") ||
-    upper.includes("CASH") ||
-    upper.includes("CASHIER") ||
-    upper.includes("CASHIER#") ||
-    upper.includes("THANK YOU")
-  );
+function looksLikeTotalsOrPayment(upper: string): boolean {
+  return [
+    "SUBTOTAL",
+    "TOTAL",
+    "TAX",
+    "BALANCE",
+    "CHANGE DUE",
+    "DEBIT",
+    "CREDIT",
+    "VISA",
+    "MASTERCARD",
+    "AMEX",
+    "TEND",
+    "APPROV",
+    "AUTH",
+    "AID:",
+    "ACCOUNT#",
+    "REF #",
+    "NETWORK ID",
+    "APPR CODE",
+    "TERMINAL #",
+    "PAY FROM",
+    "PAYMENT",
+    "CASH",
+    "CASHIER",
+    "THANK YOU",
+  ].some((word) => upper.includes(word));
 }
 
-function looksLikeDateTime(upper: string) {
+function looksLikeDateTime(upper: string): boolean {
   return (
     /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(upper) ||
-    /\b\d{1,2}:\d{2}(:\d{2})?\b/.test(upper)
+    /\b\d{1,2}:\d{2}(?::\d{2})?\b/.test(upper)
   );
 }
 
-function letterCount(upper: string) {
-  return (upper.match(/[A-Z]/g) ?? []).length;
-}
-
-function digitCount(upper: string) {
-  return (upper.match(/[0-9]/g) ?? []).length;
+/**
+ * Removes an isolated product ID/UPC at the beginning or end of an accepted
+ * OCR line. Does not alter the raw original; use this on a copy before sending
+ * candidates to canonicalization. Returns the input trimmed when no SKU found.
+ */
+export function cleanReceiptCandidateLine(line: string): string {
+  let cleaned = line.replace(/\s+/g, " ").trim();
+  // Require a largely numeric ID (allows an OCR-confused letter within the ID)
+  // AND a remaining textual description; avoid changing "0ATMILK" by itself.
+  cleaned = cleaned.replace(
+    /^(?=[A-Z0-9]{6,14}\s)(?=(?:[A-Z]*\d){4})[A-Z0-9]{6,14}\s+(?=[A-Z])/i,
+    "",
+  );
+  cleaned = cleaned.replace(/\s+\d{6,14}$/, "");
+  return cleaned.trim();
 }
 
 export function isBadLine(line: string): boolean {
   const upper = upperForChecks(line);
+  if (!upper || upper.length <= 2) return true;
 
-  if (!upper) return true;
-
-  // --------------------------------------------------
-  // Very small / useless OCR fragments
-  // --------------------------------------------------
-
-  if (upper.length <= 2) return true;
-
-  if (letterCount(upper) <= 2 && digitCount(upper) >= 5) {
+  // Run metadata checks BEFORE stripping an ID so phone/address details cannot
+  // turn into superficially plausible product names.
+  if (
+    /\b(?:PAYMENT|CHANGE|YOU SAVED|KROGER PLUS CUSTOMER|KROGER SAVINGS|MFG CPN SAVINGS|SCANNED COUPON|FRESH FOOD|LOW PRICES|YOUR CASHIER)\b/.test(
+      upper,
+    )
+  )
     return true;
-  }
-
-  // --------------------------------------------------
-  // Payment / receipt metadata
-  // --------------------------------------------------
-
-  if (/\b(PAYMENT|CHANGE)\b/i.test(line)) return true;
-  if (/\bYOU SAVED\b/i.test(line)) return true;
-  if (/\bKROGER PLUS CUSTOMER\b/i.test(line)) return true;
-  if (/\bKROGER SAVINGS\b/i.test(line)) return true;
-  if (/\bMFG CPN SAVINGS\b/i.test(line)) return true;
-  if (/\bSCANNED COUPON\b/i.test(line)) return true;
-  if (/\bFRESH FOOD\b/i.test(line)) return true;
-  if (/\bLOW PRICES\b/i.test(line)) return true;
-  if (/\bYOUR CASHIER\b/i.test(line)) return true;
-
-  if (/^\s*REF#?:/i.test(line)) return true;
-
-  // PURCHASE: $46.38
-  // PURCHASE $46.38
-  // PURCHASE S 46.38
-  // PURCHASE 46.38
-  if (/^\s*PURCHASE\b.*\d+\.\d{2}\s*$/i.test(line)) {
-    return true;
-  }
-
-  // PUB 123
-  if (/^\s*PUB\s+\d+\s*$/i.test(line)) {
-    return true;
-  }
-
-  // 2 @ 3 FOR 10.00
-  if (/^\s*\d+\s*@\s*\d+\s+FOR\s+\d+\.\d{2}\s*$/i.test(line)) {
-    return true;
-  }
-
-  // SAVE .40 EGGS etc.
-  if (/^\s*SAVE\s+[.\d]+\s+/i.test(line)) {
-    return true;
-  }
-
-  if (/^\s*SC\s*$/i.test(line)) return true;
-  if (/^\(?RROGER\)?$/i.test(line)) return true;
-
-  // --------------------------------------------------
-  // Section headers / branding
-  // --------------------------------------------------
+  if (/^REF#?:/.test(upper)) return true;
+  if (/^PURCHASE\b.*\d+\.\d{2}\s*$/.test(upper)) return true;
+  if (/^PUB\s+\d+$/.test(upper)) return true;
+  if (/^\d+\s*@\s*\d+\s+FOR\s+\d+\.\d{2}$/.test(upper)) return true;
+  if (/^SAVE\s+[.\d]+\s+/.test(upper)) return true;
+  if (upper === "SC" || /^\(?RROGER\)?$/.test(upper)) return true;
 
   if (SECTION_HEADERS.has(upper)) return true;
-
-  if (upper.includes("TARGET")) return true;
-  if (upper.includes("EXPECT MORE PAY LESS")) return true;
-
-  if (upper.includes("CARTWHEEL")) return true;
-
-  if (upper.includes("MFRCPN") || upper.includes("MFR CPN")) {
-    return true;
-  }
-
   if (
-    upper.includes("SAVED") &&
-    (upper.includes("OFF") || upper.includes("$"))
-  ) {
+    upper.includes("TARGET") ||
+    upper.includes("EXPECT MORE PAY LESS") ||
+    upper.includes("CARTWHEEL") ||
+    upper.includes("MFRCPN") ||
+    upper.includes("MFR CPN") ||
+    (upper.includes("SAVED") &&
+      (upper.includes("OFF") || upper.includes("$"))) ||
+    upper.includes("SEE BACK") ||
+    upper.includes("CHANCE") ||
+    upper.includes("WIN $") ||
+    upper.includes("WIN$") ||
+    upper.includes("REDUCED TO CLEAR") ||
+    upper.startsWith("WAS ") ||
+    upper.includes("LIMITED PARTNERSHIP") ||
+    upper.startsWith("ABN:") ||
+    upper === "ALDI STORES" ||
+    upper.includes("SAVINGS")
+  )
     return true;
-  }
 
-  if (upper.includes("SEE BACK")) return true;
-  if (upper.includes("CHANCE")) return true;
-  if (upper.includes("WIN $") || upper.includes("WIN$")) return true;
-
-  if (upper.includes("EXPECT MORE") && upper.includes("PAY LESS")) {
-    return true;
-  }
-
-  if (upper.includes("REDUCED TO CLEAR")) return true;
-  if (upper.startsWith("WAS ")) return true;
-  if (upper.includes("LIMITED PARTNERSHIP")) return true;
-  if (upper.startsWith("ABN:")) return true;
-  if (upper === "ALDI STORES") return true;
-  if (upper.includes("SAVINGS")) return true;
-
-  // --------------------------------------------------
-  // Discounts / promos
-  //
-  // IMPORTANT:
-  // Do NOT reject "%" by itself.
-  //
-  // Legitimate products include:
-  // 2% Milk
-  // 1% Milk
-  // 0% Greek Yogurt
-  // 80% Lean Beef
-  // --------------------------------------------------
-
+  // A percentage alone must NOT disqualify foods like "2% Milk".
   const promoWord =
-    /\b(OFF|0FF|DFF|OFT|DISCOUNT|DISC|SAVE|SAVINGS|COUPON|CPN|MFRCPN|DEAL|PROMO)\b/.test(
+    /\b(?:OFF|0FF|DFF|OFT|DISCOUNT|DISC|SAVE|SAVINGS|COUPON|CPN|MFRCPN|DEAL|PROMO)\b/.test(
       upper,
     );
-
   if (
     promoWord &&
     (upper.includes("%") ||
       /[$€]\s*\d/.test(upper) ||
       /\b\d+\.\d{2}\b/.test(upper))
-  ) {
+  )
     return true;
-  }
-
-  // --------------------------------------------------
-  // Known metadata helpers
-  // --------------------------------------------------
 
   if (looksLikeStoreMeta(upper)) return true;
   if (looksLikeAddressOrPhone(upper)) return true;
   if (looksLikeTotalsOrPayment(upper)) return true;
   if (looksLikeDateTime(upper)) return true;
-
-  // --------------------------------------------------
-  // Manager / cashier
-  //
-  // Do this BEFORE generic "has a word" acceptance.
-  // --------------------------------------------------
-
   if (
     upper.includes("MGR") ||
     upper.includes("MANAGER") ||
     upper.includes("CASHIER")
-  ) {
+  )
     return true;
-  }
 
-  // --------------------------------------------------
-  // Phone-ish numbers
-  //
-  // Handles OCR such as:
-  // 530-378-02 44
-  // --------------------------------------------------
+  // Evaluate the description without an attached SKU. In particular, do not
+  // mistake the 9-digit prefix for a phone number or reject it as a UPC.
+  const candidate = upperForChecks(cleanReceiptCandidateLine(line));
+  if (!candidate || candidate.length <= 2) return true;
+  if (letterCount(candidate) <= 2 && digitCount(candidate) >= 5) return true;
 
-  if (/\d{3}\s*[-.)]?\s*\d{3}\s*[-.)]?\s*\d{2,4}\b/.test(line)) {
-    return true;
-  }
-
-  // --------------------------------------------------
-  // ZIP/address combinations
-  // --------------------------------------------------
-
-  const hasZip = /\b\d{5}(?:-\d{4})?\b/.test(line);
-
-  const looksLikePlace =
-    /\b(MINNESOTA|STREET|AVE|AVENUE|ROAD|BLVD|DRIVE)\b/i.test(line);
-
-  if (hasZip && looksLikePlace) {
-    return true;
-  }
-
-  // --------------------------------------------------
-  // Mostly-numeric IDs / UPCs
-  // --------------------------------------------------
-
-  if (isDigitsHeavy(upper)) {
-    return true;
-  }
-
-  // Compact tracking/ID codes
+  // Remaining bare ID/barcode with no product text.
+  if (digitCount(candidate) >= 8 && letterCount(candidate) < 3) return true;
   if (
-    /^[A-Z0-9]{8,}$/.test(upper.replace(/\s+/g, "")) &&
-    !hasWordLikeToken(upper)
-  ) {
+    /^[A-Z0-9]{8,}$/.test(candidate.replace(/\s+/g, "")) &&
+    !hasWordLikeToken(candidate)
+  )
     return true;
-  }
 
-  // --------------------------------------------------
-  // Item + UPC
-  //
-  // Example:
-  // BELL PEPPER 000000004065
-  //
-  // Previously this returned false for ANY line with a
-  // word. Now it actually requires a long digit run.
-  // --------------------------------------------------
-
-  const hasWord = hasWordLikeToken(upper);
-  const hasLongDigitRun = /\d{6,}/.test(upper);
-
-  if (hasWord && hasLongDigitRun) {
-    return false;
-  }
-
-  // --------------------------------------------------
-  // Price handling
-  // --------------------------------------------------
-
-  const hasPrice = /[€$]\s*\d/.test(upper) || /\b\d+\.\d{2}\b/.test(upper);
-
-  // Item with a price is allowed.
-  if (hasWord && hasPrice) {
-    return false;
-  }
-
-  // Price/math only
-  if (hasPrice && !hasWord) {
+  const hasWord = hasWordLikeToken(candidate);
+  const hasPrice =
+    /[€$]\s*\d/.test(candidate) || /\b\d+\.\d{2}\b/.test(candidate);
+  if (hasPrice && !hasWord) return true;
+  if (/\b\d+\.\d{2}\b/.test(candidate) && letterCount(candidate) < 4)
     return true;
-  }
 
-  if (/\b\d+\.\d{2}\b/.test(upper) && letterCount(upper) < 4) {
-    return true;
-  }
-
-  // --------------------------------------------------
-  // Final item-name check
-  // --------------------------------------------------
-
-  // Most real item names contain at least 4 letters.
-  if (letterCount(upper) >= 4) {
-    return false;
-  }
-
-  // Anything else is probably OCR garbage.
-  return true;
+  // Preserve shortened or OCR-imperfect item descriptions for the backend.
+  return letterCount(candidate) < 4;
 }

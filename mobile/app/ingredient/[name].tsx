@@ -19,7 +19,8 @@ import {
   type PantryHistoryEntry,
 } from "@/features/pantry/history";
 import { loadPantry } from "@/features/pantry/storage";
-import type { PantryItem } from "@/features/pantry/types";
+import type { IngredientImage, PantryItem } from "@/features/pantry/types";
+import { getIngredientImageOverride } from "@/features/pantry/ingredientImageOverrides";
 import {
   getPantryItemStats,
   getPantryItemTimingStats,
@@ -64,6 +65,9 @@ export default function IngredientPage() {
   const [range, setRange] = useState<AnalyticsRange>("all");
   const [history, setHistory] = useState<PantryHistoryEntry[]>([]);
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
+  const [preferredImage, setPreferredImage] = useState<IngredientImage | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const savedRecipes = useRecipesStore((state) => state.saved);
 
@@ -72,16 +76,24 @@ export default function IngredientPage() {
       let active = true;
       async function load() {
         setLoading(true);
+        // Image choices live in the shared override store, not Analytics itself.
+        // Recheck on focus so an image changed in Scan Review or Pantry shows here.
         try {
-          const [events, pantry] = await Promise.all([
+          const [events, pantry, override] = await Promise.all([
             getPantryHistory(),
             loadPantry(),
+            getIngredientImageOverride(ingredientName).catch((error) => {
+              console.warn("Failed to load preferred ingredient image", error);
+              return null;
+            }),
           ]);
           if (!active) return;
           setHistory(events);
           setPantryItems(Object.values(pantry).flat() as PantryItem[]);
+          setPreferredImage(override?.image ?? null);
         } catch (error) {
           console.warn("Failed to load ingredient details", error);
+          if (active) setPreferredImage(null);
         } finally {
           if (active) setLoading(false);
         }
@@ -90,7 +102,7 @@ export default function IngredientPage() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [ingredientName]),
   );
 
   const currentItems = useMemo(
@@ -123,8 +135,12 @@ export default function IngredientPage() {
     () => getPantryRepurchaseStats(ingredientEvents)[0],
     [ingredientEvents],
   );
-  const imageUrl = currentItems.find((item) => item.ingredientImage?.url)
-    ?.ingredientImage?.url;
+  // Manual choice first. If none exists, use a matching current pantry item's
+  // automatic image. When neither exists, the existing placeholder is shown.
+  const imageUrl =
+    preferredImage?.url ??
+    currentItems.find((item) => item.ingredientImage?.url)?.ingredientImage
+      ?.url;
   const category =
     currentItems[0]?.categoryKey ?? ingredientEvents[0]?.categoryKey;
 
