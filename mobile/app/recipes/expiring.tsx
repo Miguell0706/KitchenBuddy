@@ -1,5 +1,13 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+} from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -44,7 +52,7 @@ const ExpiringRecipesScreen: React.FC = () => {
     }
   }, [rawItemIds]);
 
-  // add categoryKey so we can mutate pantry correctly
+  // add categoryKey so we can mutate pantry correctly*
   const selectedItems: RecipeItem[] = useMemo(() => {
     if (!parsedIds.length) return [];
 
@@ -62,10 +70,13 @@ const ExpiringRecipesScreen: React.FC = () => {
     return result;
   }, [parsedIds, pantryByCategory]);
 
-  // which of these are included in recipe generation
+  // which of these are included in recipe generation*
   const [recipeItemIds, setRecipeItemIds] = useState<string[]>([]);
-  // local undo state
+  // local undo state*
   const [undo, setUndo] = useState<UndoState>(null);
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const generatingRef = useRef(false);
 
   function toggleRecipeSelection(id: string) {
     setRecipeItemIds((prev) =>
@@ -78,7 +89,7 @@ const ExpiringRecipesScreen: React.FC = () => {
     const index = list.findIndex((x) => x.id === item.id);
     const wasSelected = recipeItemIds.includes(item.id);
 
-    // ✅ create history entry you can undo
+    // ✅ create history entry you can undo*
     const historyEntryId = await appendPantryHistory(item, "removed");
 
     if (index !== -1) {
@@ -91,7 +102,7 @@ const ExpiringRecipesScreen: React.FC = () => {
       });
     }
 
-    // ✅ only delete (do NOT call markUsed here)
+    // ✅ only delete (do NOT call markUsed here)*
     deleteItem(item.categoryKey, item.id);
 
     setRecipeItemIds((prev) => prev.filter((x) => x !== item.id));
@@ -114,7 +125,7 @@ const ExpiringRecipesScreen: React.FC = () => {
       });
     }
 
-    // ✅ only markUsed
+    // ✅ only markUsed*
     markUsed(item.categoryKey, item.id);
 
     setRecipeItemIds((prev) => prev.filter((x) => x !== item.id));
@@ -125,12 +136,12 @@ const ExpiringRecipesScreen: React.FC = () => {
 
     const { item, index, wasSelected, historyEntryId } = undo;
 
-    // ✅ remove the history record created by delete/use
+    // ✅ remove the history record created by delete/use*
     if (historyEntryId) {
       await removePantryHistoryEntry(historyEntryId);
     }
 
-    // ✅ restore item at original index
+    // ✅ restore item at original index*
     setPantry((prev) => {
       const list = prev[item.categoryKey] ?? [];
       const nextList = [...list];
@@ -148,13 +159,20 @@ const ExpiringRecipesScreen: React.FC = () => {
     setUndo(null);
   }
   async function handleGenerateRecipes() {
+    // A ref blocks double taps even before React updates the disabled button.
+    if (generatingRef.current) return;
+
     const itemsForRecipes = selectedItems.filter((it) =>
       recipeItemIds.includes(it.id),
     );
     if (itemsForRecipes.length === 0) return;
 
+    generatingRef.current = true;
+    setIsGenerating(true);
+
     const title =
       itemsForRecipes[0].recipeSearchName?.trim() || itemsForRecipes[0].name;
+
     try {
       const url = `${RECIPES_URL}?title=${encodeURIComponent(title)}`;
       console.log("🍳 recipes fetch:", url);
@@ -164,12 +182,20 @@ const ExpiringRecipesScreen: React.FC = () => {
 
       if (!res.ok) {
         console.log("❌ recipes non-200:", res.status, raw.slice(0, 200));
+        Alert.alert(
+          "Recipes unavailable",
+          "Couldn't load recipes right now. Please try again.",
+        );
         return;
       }
 
       const trimmed = raw.trim();
       if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) {
         console.log("❌ recipes returned non-JSON:", trimmed.slice(0, 200));
+        Alert.alert(
+          "Unexpected response",
+          "Couldn't read the recipe results. Please try again.",
+        );
         return;
       }
 
@@ -182,12 +208,15 @@ const ExpiringRecipesScreen: React.FC = () => {
 
       if (!json.ok) {
         console.log("❌ recipes error payload:", json);
+        Alert.alert(
+          "Recipes unavailable",
+          "Couldn't generate recipes this time. Please try again.",
+        );
         return;
       }
 
       const recipes = json.recipes ?? [];
       console.log("✅ recipes:", recipes.length, "cached?", json.cached);
-
       setResults({
         queryTitle: title,
         recipes,
@@ -197,6 +226,13 @@ const ExpiringRecipesScreen: React.FC = () => {
       router.push("/recipes/results");
     } catch (err) {
       console.error("❌ Recipe fetch failed:", err);
+      Alert.alert(
+        "Connection issue",
+        "Couldn't load recipes. Check your connection and try again.",
+      );
+    } finally {
+      generatingRef.current = false;
+      setIsGenerating(false);
     }
   }
 
@@ -268,22 +304,32 @@ const ExpiringRecipesScreen: React.FC = () => {
             <Pressable
               style={[
                 styles.primaryButton,
-                !hasRecipeItems && styles.primaryButtonDisabled,
+                (!hasRecipeItems || isGenerating) &&
+                  styles.primaryButtonDisabled,
               ]}
-              disabled={!hasRecipeItems}
+              disabled={!hasRecipeItems || isGenerating}
               onPress={handleGenerateRecipes}
             >
-              <Text style={styles.primaryButtonText}>
-                {hasRecipeItems
-                  ? "Get recipes for selected items"
-                  : "Select at least one item"}
-              </Text>
+              {isGenerating ? (
+                <View style={styles.loadingButtonContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.primaryButtonText}>
+                    Finding recipes...
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {hasRecipeItems
+                    ? "Get recipes for selected items"
+                    : "Select at least one item"}
+                </Text>
+              )}
             </Pressable>
           </>
         )}
       </ScrollView>
 
-      {undo && (
+      {undo && !isGenerating && (
         <View style={styles.undoBar}>
           <Text style={styles.undoText}>
             {undo.action === "used" ? "Marked as used" : "Deleted"} “
@@ -292,6 +338,18 @@ const ExpiringRecipesScreen: React.FC = () => {
           <Pressable onPress={handleUndo}>
             <Text style={styles.undoButtonText}>Undo</Text>
           </Pressable>
+        </View>
+      )}
+
+      {isGenerating && (
+        <View style={styles.loadingOverlay} accessibilityLiveRegion="polite">
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingTitle}>Finding your recipes...</Text>
+            <Text style={styles.loadingSubtitle}>
+              Please wait while we prepare your recipe suggestions.
+            </Text>
+          </View>
         </View>
       )}
     </View>
@@ -392,6 +450,43 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "600",
+  },
+  loadingButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.48)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    zIndex: 10,
+    elevation: 10,
+  },
+  loadingCard: {
+    width: "100%",
+    maxWidth: 320,
+    paddingVertical: 30,
+    paddingHorizontal: 24,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  loadingTitle: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#171717",
+    textAlign: "center",
+  },
+  loadingSubtitle: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 19,
   },
   undoBar: {
     position: "absolute",
