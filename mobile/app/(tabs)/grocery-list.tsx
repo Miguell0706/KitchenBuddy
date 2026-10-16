@@ -356,6 +356,70 @@ export default function GroceryListScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        {/* Shopping Mode shares this same grocery list and its checked state. */}
+        {!loading && items.length > 0 && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Open Shopping Mode"
+            activeOpacity={0.85}
+            disabled={saving}
+            onPress={() => router.push("/grocery/shopping")}
+            style={{
+              marginBottom: Spacing.md,
+              borderRadius: 18,
+              backgroundColor: "#367A57",
+              padding: 18,
+              opacity: saving ? 0.55 : 1,
+            }}
+          >
+            <View
+              style={[Layout.rowBetween, { alignItems: "center", gap: 12 }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ color: "#fff", fontSize: 19, fontWeight: "800" }}
+                >
+                  {checkedCount > 0 ? "Resume Shopping" : "Start Shopping"}
+                </Text>
+                <Text style={{ color: "rgba(255,255,255,0.88)", marginTop: 5 }}>
+                  {checkedCount} of {items.length} collected ·{" "}
+                  {items.length - checkedCount} remaining
+                </Text>
+              </View>
+              <Ionicons name="basket-outline" size={29} color="#fff" />
+            </View>
+            <View
+              style={{
+                height: 6,
+                borderRadius: 999,
+                backgroundColor: "rgba(255,255,255,0.25)",
+                overflow: "hidden",
+                marginTop: 14,
+              }}
+            >
+              <View
+                style={{
+                  height: "100%",
+                  backgroundColor: "#fff",
+                  width: `${(checkedCount / items.length) * 100}%`,
+                }}
+              />
+            </View>
+            <View
+              style={{
+                marginTop: 14,
+                paddingVertical: 11,
+                backgroundColor: "#fff",
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#285B41", fontWeight: "800" }}>
+                Open Shopping Mode →
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
         <View style={[CardStyles.subtle, { marginBottom: Spacing.md }]}>
           <View style={[Layout.rowBetween, { marginBottom: Spacing.sm }]}>
             <View style={[Layout.row, { alignItems: "center", gap: 8 }]}>

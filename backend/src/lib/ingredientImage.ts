@@ -28,7 +28,7 @@ export async function getOrCreateIngredientImage(canonicalName: string) {
   if (!photo) return null;
 
   const image = {
-    url: photo.src.small,
+    url: photo.src.medium,
     avgColor: photo.avg_color,
     credit: {
       provider: "pexels" as const,
