@@ -100,6 +100,10 @@ const RecipesScreen: React.FC = () => {
     router.push("/recipes/saved");
   }
 
+  function handleOpenRecipeBook() {
+    router.push("/recipes/recipebook");
+  }
+
   function handleExpiringSoon() {
     const ids = expiringSoon.map((it) => it.id);
     console.log("🔥 handleUseExpiring ids:", ids);
@@ -160,15 +164,15 @@ const RecipesScreen: React.FC = () => {
         </View>
 
         <View style={styles.section}>
-          <SectionHeading
-            eyebrow="YOUR COLLECTION"
-            title="Saved recipes"
-            action="See all"
-            onAction={handleOpenSaved}
-          />
+          <SectionHeading eyebrow="YOUR COLLECTION" title="Your recipes" />
+          <Text style={styles.sectionDescription}>
+            Browse your favorites as a list or flip through your personal
+            cookbook.
+          </Text>
+
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="View saved recipes"
+            accessibilityLabel="Open saved recipes list"
             onPress={handleOpenSaved}
             style={({ pressed }) => [
               styles.savedCard,
@@ -177,29 +181,59 @@ const RecipesScreen: React.FC = () => {
           >
             <View style={styles.savedArt}>
               <Ionicons
-                name={
-                  recipes.length === 0 ? "bookmark-outline" : "book-outline"
-                }
+                name="bookmark-outline"
                 size={27}
                 color={PALETTE.slateDark}
               />
             </View>
             <View style={styles.savedCopy}>
-              <Text style={styles.cardTitle}>
-                {recipes.length === 0
-                  ? "Your collection starts here"
-                  : `${recipes.length} recipe${recipes.length === 1 ? "" : "s"} saved`}
-              </Text>
+              <Text style={styles.cardTitle}>Saved recipes</Text>
               <Text style={styles.cardDescription}>
                 {recipes.length === 0
-                  ? "Save a recipe you love and it will be waiting here."
-                  : "All your favorites, together in one place."}
+                  ? "Your saved favorites will appear here."
+                  : `${recipes.length} saved recipe${recipes.length === 1 ? "" : "s"} in an easy-to-browse list.`}
               </Text>
-              <Text style={styles.cardLink}>
-                {recipes.length === 0
-                  ? "Explore your collection"
-                  : "Open collection"}
+              <Text style={styles.cardLink}>Browse saved recipes</Text>
+            </View>
+            <Ionicons
+              name="chevron-forward"
+              size={17}
+              color={PALETTE.slateDark}
+            />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open interactive recipe book"
+            onPress={handleOpenRecipeBook}
+            style={({ pressed }) => [
+              styles.bookCard,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.bookCoverOuter}>
+              <View style={styles.bookCoverSpine} />
+              <View style={styles.bookCoverBorder}>
+                <Ionicons name="book-outline" size={23} color={PALETTE.paper} />
+                <Text style={styles.bookCoverTitle}>MY{"\n"}RECIPES</Text>
+                <View style={styles.bookCoverRule} />
+              </View>
+              <View style={styles.bookCoverPages} />
+            </View>
+            <View style={styles.savedCopy}>
+              <Text style={styles.cardTitle}>My Recipe Book</Text>
+              <Text style={styles.cardDescription}>
+                Turn the pages of your personal cookbook, one favorite at a
+                time.
               </Text>
+              <View style={styles.bookLinkRow}>
+                <Text style={styles.cardLink}>Open recipe book</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={14}
+                  color={PALETTE.slateDark}
+                />
+              </View>
             </View>
             <Ionicons
               name="chevron-forward"
@@ -452,7 +486,76 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     padding: 13,
     minHeight: 113,
+    marginBottom: 11,
   },
+  bookCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: PALETTE.paper,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    borderRadius: 19,
+    padding: 13,
+    minHeight: 113,
+  },
+  bookCoverOuter: {
+    width: 75,
+    height: 86,
+    backgroundColor: PALETTE.slateDark,
+    borderRadius: 6,
+    marginRight: 13,
+    padding: 7,
+    paddingLeft: 10,
+    shadowColor: PALETTE.ink,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 2, height: 3 },
+    elevation: 2,
+  },
+  bookCoverSpine: {
+    position: "absolute",
+    left: 3,
+    top: 0,
+    bottom: 0,
+    width: 5,
+    backgroundColor: "rgba(0,0,0,0.18)",
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
+  },
+  bookCoverBorder: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.55)",
+    borderRadius: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  bookCoverTitle: {
+    color: PALETTE.paper,
+    textAlign: "center",
+    fontFamily: "serif",
+    fontWeight: "700",
+    fontSize: 10,
+    letterSpacing: 1,
+    lineHeight: 12,
+  },
+  bookCoverRule: {
+    width: 20,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.65)",
+  },
+  bookCoverPages: {
+    position: "absolute",
+    right: -3,
+    top: 5,
+    bottom: 5,
+    width: 3,
+    backgroundColor: PALETTE.cream,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  bookLinkRow: { flexDirection: "row", alignItems: "baseline", gap: 6 },
   savedArt: {
     width: 75,
     height: 82,
