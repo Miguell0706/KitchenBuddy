@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -9,13 +10,26 @@ import {
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-
-import { Colors } from "@/constants/theme";
 import { usePremium } from "@/context/PremiumContext";
+
+type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+// KitchenBuddy editorial palette, shared visually with Grocery, About and Settings.
+const C = {
+  background: "#F6F3EE",
+  paper: "#FFFEFB",
+  row: "#F2F0EC",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDark: "#485F6A",
+  taupe: "#E8E2DA",
+  border: "#E9E5DE",
+  cream: "#EDE6DA",
+};
 
 export default function PremiumScreen() {
   const router = useRouter();
-
   const { isPremium, isLoading, activatePremium, deactivatePremium } =
     usePremium();
 
@@ -27,14 +41,12 @@ export default function PremiumScreen() {
 
     try {
       await activatePremium();
-
       Alert.alert(
         "Premium Activated",
         "KitchenBuddy Premium is now active for testing.",
       );
     } catch (error) {
       console.error("Premium activation error:", error);
-
       Alert.alert(
         "Couldn't Activate Premium",
         "Something went wrong while activating Premium.",
@@ -45,14 +57,12 @@ export default function PremiumScreen() {
   async function handleResetPremium() {
     try {
       await deactivatePremium();
-
       Alert.alert(
         "Premium Reset",
         "KitchenBuddy has been returned to the Free version.",
       );
     } catch (error) {
       console.error("Premium reset error:", error);
-
       Alert.alert(
         "Couldn't Reset Premium",
         "Something went wrong while resetting Premium.",
@@ -66,6 +76,10 @@ export default function PremiumScreen() {
         options={{
           title: "KitchenBuddy Premium",
           headerBackTitle: "Settings",
+          headerStyle: { backgroundColor: C.background },
+          headerTintColor: C.ink,
+          headerTitleStyle: { fontWeight: "600" },
+          headerShadowVisible: false,
         }}
       />
 
@@ -74,76 +88,90 @@ export default function PremiumScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero */}
           <View style={styles.hero}>
-            <View style={styles.crown}>
-              <Ionicons name="star" size={34} color={Colors.primary} />
+            <View style={styles.heroTop}>
+              <View style={styles.heroIcon}>
+                <Ionicons name="star-outline" size={28} color={C.cream} />
+              </View>
+              <View style={styles.heroTag}>
+                <Ionicons name="sparkles-outline" size={13} color={C.cream} />
+                <Text style={styles.heroTagText}>KITCHENBUDDY PREMIUM</Text>
+              </View>
             </View>
-
-            <View style={styles.premiumBadge}>
-              <Ionicons name="sparkles" size={13} color={Colors.primary} />
-
-              <Text style={styles.premiumBadgeText}>KITCHENBUDDY PREMIUM</Text>
+            <Text style={styles.heroEyebrow}>
+              A LITTLE MORE OF WHAT YOU LOVE
+            </Text>
+            <Text style={styles.heroTitle}>
+              Make more of every grocery trip.
+            </Text>
+            <Text style={styles.heroDescription}>
+              Smarter recipes, thoughtful shopping, and a clearer picture of
+              what happens in your pantry.
+            </Text>
+            <View style={styles.heroFooter}>
+              <Ionicons name="leaf-outline" size={16} color={C.cream} />
+              <Text style={styles.heroFooterText}>
+                Less waste. More good food.
+              </Text>
             </View>
-
-            <Text style={styles.title}>
-              Get more from the food you already have.
-            </Text>
-
-            <Text style={styles.subtitle}>
-              Smarter recipes, smarter shopping, and a better understanding of
-              your pantry.
-            </Text>
           </View>
 
-          {/* Current Premium Status */}
-          {!isLoading && (
-            <View
-              style={[styles.statusCard, isPremium && styles.statusCardPremium]}
-            >
-              <View
-                style={[
-                  styles.statusIcon,
-                  isPremium && styles.statusIconPremium,
-                ]}
-              >
-                <Ionicons
-                  name={isPremium ? "checkmark-circle" : "person-outline"}
-                  size={24}
-                  color={isPremium ? Colors.primary : "#777"}
-                />
+          <View style={styles.section}>
+            <Text style={styles.eyebrow}>YOUR MEMBERSHIP</Text>
+            <Text style={styles.sectionTitle}>Your current plan</Text>
+            <View style={styles.statusCard}>
+              <View style={styles.statusIcon}>
+                {isLoading ? (
+                  <ActivityIndicator color={C.slate} />
+                ) : (
+                  <Ionicons
+                    name={
+                      isPremium ? "checkmark-circle-outline" : "person-outline"
+                    }
+                    size={24}
+                    color={C.slate}
+                  />
+                )}
               </View>
-
               <View style={styles.statusContent}>
-                <Text style={styles.statusLabel}>CURRENT PLAN</Text>
-
+                <Text style={styles.statusEyebrow}>CURRENT PLAN</Text>
                 <Text style={styles.statusTitle}>
-                  {isPremium ? "KitchenBuddy Premium" : "KitchenBuddy Free"}
+                  {isLoading
+                    ? "Checking your plan..."
+                    : isPremium
+                      ? "KitchenBuddy Premium"
+                      : "KitchenBuddy Free"}
                 </Text>
-
                 <Text style={styles.statusDescription}>
-                  {isPremium
-                    ? "Premium features are unlocked."
-                    : "Upgrade to unlock all Premium features."}
+                  {isLoading
+                    ? "Your membership status is loading."
+                    : isPremium
+                      ? "Premium features are unlocked."
+                      : "The everyday essentials are yours, free."}
                 </Text>
               </View>
+              {!isLoading && isPremium && (
+                <Ionicons name="sparkles" size={20} color={C.slate} />
+              )}
             </View>
-          )}
+          </View>
 
-          {/* Premium Features */}
-          <View style={styles.features}>
+          <View style={styles.section}>
+            <Text style={styles.eyebrow}>MORE POSSIBILITIES</Text>
+            <Text style={styles.sectionTitle}>The Premium collection</Text>
+            <Text style={styles.sectionDescription}>
+              Thoughtful extras to help make the most of the food you have.
+            </Text>
             <PremiumFeature
               icon="restaurant-outline"
               title="Advanced Recipes"
               description="Get better recipe ideas built around the food you already have, including ingredients that need to be used soon."
             />
-
             <PremiumFeature
               icon="cart-outline"
               title="Smart Grocery List"
               description="Build smarter shopping lists using your pantry and recipes, so you know what you have and what you're missing."
             />
-
             <PremiumFeature
               icon="analytics-outline"
               title="Pantry Analytics"
@@ -151,12 +179,9 @@ export default function PremiumScreen() {
             />
           </View>
 
-          {/* Free Features */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Everything you already use stays free
-            </Text>
-
+            <Text style={styles.eyebrow}>ALWAYS INCLUDED</Text>
+            <Text style={styles.sectionTitle}>The essentials stay free.</Text>
             <View style={styles.freeCard}>
               <FreeFeature text="Receipt scanning" />
               <FreeFeature text="Pantry management" />
@@ -166,39 +191,39 @@ export default function PremiumScreen() {
             </View>
           </View>
 
-          {/* Premium CTA */}
           {!isLoading && !isPremium && (
-            <>
+            <View style={styles.actionSection}>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Activate Premium for testing"
                 onPress={handlePremium}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  pressed && styles.buttonPressed,
+                  pressed && styles.pressed,
                 ]}
               >
-                <Ionicons name="star" size={18} color="#fff" />
-
+                <Ionicons name="star-outline" size={19} color={C.paper} />
                 <Text style={styles.primaryButtonText}>Get Premium</Text>
+                <Ionicons name="arrow-forward" size={18} color={C.paper} />
               </Pressable>
-
-              <Text style={styles.noChargeText}>
-                Development mode — no purchase will be made.
+              <Text style={styles.developmentNote}>
+                Development mode — this activates test access. No purchase will
+                be made.
               </Text>
-            </>
+            </View>
           )}
 
-          {/* Active Premium */}
           {!isLoading && isPremium && (
             <View style={styles.activeCard}>
-              <Ionicons
-                name="checkmark-circle"
-                size={25}
-                color={Colors.primary}
-              />
-
+              <View style={styles.activeIcon}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={23}
+                  color={C.slate}
+                />
+              </View>
               <View style={styles.activeContent}>
                 <Text style={styles.activeTitle}>Premium is active</Text>
-
                 <Text style={styles.activeDescription}>
                   Advanced Recipes, Smart Grocery List, and Pantry Analytics are
                   unlocked.
@@ -207,76 +232,81 @@ export default function PremiumScreen() {
             </View>
           )}
 
-          {/* Development Reset */}
           {__DEV__ && !isLoading && isPremium && (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset Premium for testing"
               onPress={handleResetPremium}
               style={({ pressed }) => [
                 styles.resetButton,
-                pressed && styles.buttonPressed,
+                pressed && styles.pressed,
               ]}
             >
-              <Ionicons name="refresh-outline" size={17} color="#777" />
-
+              <Ionicons name="refresh-outline" size={17} color={C.slate} />
               <Text style={styles.resetButtonText}>
                 Reset Premium for Testing
               </Text>
             </Pressable>
           )}
 
-          {/* Purchase / Legal Links */}
           <View style={styles.purchaseLinks}>
             <Pressable
+              accessibilityRole="button"
               onPress={() =>
                 Alert.alert(
                   "Restore Purchase",
                   "Premium subscriptions are not available yet.",
                 )
               }
+              style={styles.linkTap}
             >
               <Text style={styles.link}>Restore Purchase</Text>
             </Pressable>
-
             <Text style={styles.dot}>•</Text>
-
-            <Pressable onPress={() => router.push("/settings/terms-of-use")}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push("/settings/terms-of-use")}
+              style={styles.linkTap}
+            >
               <Text style={styles.link}>Terms</Text>
             </Pressable>
-
             <Text style={styles.dot}>•</Text>
-
-            <Pressable onPress={() => router.push("/settings/privacy-policy")}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push("/settings/privacy-policy")}
+              style={styles.linkTap}
+            >
               <Text style={styles.link}>Privacy</Text>
             </Pressable>
           </View>
+          <Text style={styles.footer}>
+            KITCHENBUDDY · MORE OF THE GOOD STUFF
+          </Text>
         </ScrollView>
       </View>
     </>
   );
 }
 
-type PremiumFeatureProps = {
-  icon: keyof typeof Ionicons.glyphMap;
+function PremiumFeature({
+  icon,
+  title,
+  description,
+}: {
+  icon: IoniconName;
   title: string;
   description: string;
-};
-
-function PremiumFeature({ icon, title, description }: PremiumFeatureProps) {
+}) {
   return (
     <View style={styles.featureCard}>
       <View style={styles.featureIcon}>
-        <Ionicons name={icon} size={25} color={Colors.primary} />
+        <Ionicons name={icon} size={23} color={C.slate} />
       </View>
-
       <View style={styles.featureContent}>
         <View style={styles.featureTitleRow}>
           <Text style={styles.featureTitle}>{title}</Text>
-
-          <View style={styles.premiumPill}>
-            <Text style={styles.premiumPillText}>PREMIUM</Text>
-          </View>
+          <Text style={styles.featurePill}>PREMIUM</Text>
         </View>
-
         <Text style={styles.featureDescription}>{description}</Text>
       </View>
     </View>
@@ -287,320 +317,280 @@ function FreeFeature({ text }: { text: string }) {
   return (
     <View style={styles.freeFeature}>
       <View style={styles.checkCircle}>
-        <Ionicons name="checkmark" size={13} color={Colors.primary} />
+        <Ionicons name="checkmark" size={13} color={C.slate} />
       </View>
-
       <Text style={styles.freeFeatureText}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#fafafa",
-  },
-
-  content: {
-    padding: 16,
-    paddingBottom: 50,
-  },
-
+  screen: { flex: 1, backgroundColor: C.background },
+  content: { padding: 16, paddingBottom: 52 },
   hero: {
-    alignItems: "center",
-    paddingTop: 18,
-    paddingBottom: 28,
+    padding: 22,
+    paddingTop: 23,
+    borderRadius: 25,
+    backgroundColor: C.slate,
+    marginBottom: 27,
+    overflow: "hidden",
   },
-
-  crown: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 15,
-  },
-
-  premiumBadge: {
+  heroTop: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-    borderRadius: 20,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    marginBottom: 14,
+    justifyContent: "space-between",
+    marginBottom: 27,
+    gap: 12,
   },
-
-  premiumBadgeText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.7,
-    color: Colors.primary,
-    marginLeft: 5,
+  heroIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
   },
-
-  title: {
-    maxWidth: 350,
-    fontSize: 27,
-    lineHeight: 34,
-    fontWeight: "800",
-    color: "#222",
-    textAlign: "center",
+  heroTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 99,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    flexShrink: 1,
   },
-
-  subtitle: {
-    maxWidth: 350,
+  heroTagText: {
+    color: C.cream,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    fontSize: 9,
+  },
+  heroEyebrow: {
+    color: C.cream,
+    letterSpacing: 1.5,
+    fontSize: 10,
+    fontWeight: "700",
+    marginBottom: 9,
+  },
+  heroTitle: {
+    color: C.paper,
+    fontSize: 32,
+    lineHeight: 38,
+    fontFamily: "Georgia",
+    marginBottom: 11,
+  },
+  heroDescription: {
+    color: "#F0EFEB",
     fontSize: 14,
     lineHeight: 21,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 10,
+    maxWidth: 340,
   },
-
+  heroFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.25)",
+    marginTop: 24,
+    paddingTop: 15,
+  },
+  heroFooterText: { fontSize: 12, color: C.cream, fontWeight: "600" },
+  section: { marginBottom: 25 },
+  eyebrow: {
+    color: C.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 6,
+    marginLeft: 3,
+  },
+  sectionTitle: {
+    color: C.ink,
+    fontFamily: "Georgia",
+    fontSize: 24,
+    lineHeight: 30,
+    marginBottom: 12,
+    marginLeft: 2,
+  },
+  sectionDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: C.muted,
+    marginBottom: 13,
+    marginLeft: 2,
+  },
   statusCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ddd",
+    backgroundColor: C.paper,
+    borderRadius: 19,
+    borderColor: C.border,
+    borderWidth: 1,
     padding: 15,
-    marginBottom: 20,
+    gap: 12,
   },
-
-  statusCardPremium: {
-    backgroundColor: "rgba(80, 140, 90, 0.06)",
-    borderColor: "rgba(80, 140, 90, 0.25)",
-  },
-
   statusIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    backgroundColor: "#f2f2f2",
+    backgroundColor: C.taupe,
+    borderRadius: 14,
+    height: 47,
+    width: 47,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 13,
   },
-
-  statusIconPremium: {
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-  },
-
-  statusContent: {
-    flex: 1,
-  },
-
-  statusLabel: {
+  statusContent: { flex: 1 },
+  statusEyebrow: {
     fontSize: 9,
     fontWeight: "800",
-    letterSpacing: 0.7,
-    color: "#999",
-    marginBottom: 3,
+    letterSpacing: 1,
+    color: C.slate,
+    marginBottom: 4,
   },
-
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#222",
-  },
-
+  statusTitle: { fontSize: 16, fontWeight: "700", color: C.ink },
   statusDescription: {
     fontSize: 12,
-    color: "#777",
+    lineHeight: 18,
+    color: C.muted,
     marginTop: 3,
   },
-
-  features: {
-    gap: 12,
-    marginBottom: 30,
-  },
-
   featureCard: {
     flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ddd",
-    padding: 16,
+    alignItems: "flex-start",
+    backgroundColor: C.paper,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 19,
+    padding: 15,
+    marginBottom: 10,
+    gap: 12,
   },
-
   featureIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    backgroundColor: "rgba(80, 140, 90, 0.09)",
+    height: 47,
+    width: 47,
+    backgroundColor: C.row,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
   },
-
-  featureContent: {
-    flex: 1,
-  },
-
+  featureContent: { flex: 1 },
   featureTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
+    gap: 7,
     marginBottom: 6,
   },
-
-  featureTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#222",
-    marginRight: 8,
-  },
-
-  premiumPill: {
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-
-  premiumPillText: {
-    fontSize: 9,
+  featureTitle: { color: C.ink, fontSize: 15, fontWeight: "700" },
+  featurePill: {
+    backgroundColor: C.cream,
+    color: C.slateDark,
+    borderRadius: 99,
+    overflow: "hidden",
     fontWeight: "800",
-    letterSpacing: 0.4,
-    color: Colors.primary,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
-
-  featureDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#666",
-  },
-
-  section: {
-    marginBottom: 24,
-  },
-
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 10,
-  },
-
+  featureDescription: { color: C.muted, fontSize: 13, lineHeight: 19 },
   freeCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ddd",
-    padding: 16,
+    backgroundColor: C.paper,
+    borderColor: C.border,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 19,
   },
-
   freeFeature: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 34,
+    minHeight: 39,
+    gap: 11,
   },
-
   checkCircle: {
-    width: 22,
-    height: 22,
+    backgroundColor: C.row,
     borderRadius: 11,
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-    alignItems: "center",
+    height: 22,
+    width: 22,
     justifyContent: "center",
-    marginRight: 11,
+    alignItems: "center",
   },
-
-  freeFeatureText: {
-    fontSize: 14,
-    color: "#444",
-  },
-
+  freeFeatureText: { color: C.ink, fontSize: 14 },
+  actionSection: { marginBottom: 18 },
   primaryButton: {
-    height: 54,
+    backgroundColor: C.slate,
+    minHeight: 56,
     borderRadius: 16,
-    backgroundColor: Colors.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 11,
+    paddingHorizontal: 18,
   },
-
-  buttonPressed: {
-    opacity: 0.85,
-  },
-
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-    marginLeft: 8,
-  },
-
-  noChargeText: {
-    fontSize: 11,
-    color: "#999",
-    textAlign: "center",
+  primaryButtonText: { color: C.paper, fontSize: 16, fontWeight: "800" },
+  pressed: { opacity: 0.82 },
+  developmentNote: {
+    color: C.muted,
     marginTop: 9,
+    textAlign: "center",
+    fontSize: 11,
+    lineHeight: 17,
   },
-
   activeCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "rgba(80, 140, 90, 0.08)",
+    backgroundColor: C.cream,
     borderRadius: 18,
     padding: 16,
+    marginBottom: 13,
+    gap: 12,
   },
-
-  activeContent: {
-    flex: 1,
-    marginLeft: 12,
+  activeIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: C.paper,
+    alignItems: "center",
+    justifyContent: "center",
   },
-
+  activeContent: { flex: 1 },
   activeTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#333",
+    color: C.ink,
+    marginBottom: 4,
   },
-
-  activeDescription: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#666",
-    marginTop: 4,
-  },
-
+  activeDescription: { fontSize: 12, lineHeight: 18, color: C.muted },
   resetButton: {
-    height: 46,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ddd",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.paper,
+    borderRadius: 14,
+    minHeight: 47,
+    marginBottom: 12,
   },
-
-  resetButtonText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#777",
-    marginLeft: 7,
-  },
-
+  resetButtonText: { color: C.slate, fontSize: 13, fontWeight: "700" },
   purchaseLinks: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
     flexWrap: "wrap",
-    marginTop: 22,
+    marginTop: 6,
   },
-
-  link: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: "600",
-  },
-
-  dot: {
-    color: "#bbb",
-    marginHorizontal: 9,
+  linkTap: { paddingHorizontal: 3, paddingVertical: 10 },
+  link: { color: C.slateDark, fontSize: 12, fontWeight: "700" },
+  dot: { color: C.muted, fontSize: 12, marginHorizontal: 7 },
+  footer: {
+    color: C.muted,
+    textAlign: "center",
+    fontSize: 10,
+    letterSpacing: 1.1,
+    marginTop: 14,
   },
 });

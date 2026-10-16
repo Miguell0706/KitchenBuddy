@@ -18,14 +18,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import {
-  Screen,
-  TextStyles,
-  CardStyles,
-  Layout,
-  ButtonStyles,
-} from "@/constants/styles";
-
-import {
   CATEGORIES,
   ALL_CATEGORY_KEYS,
   setAllCategories,
@@ -50,8 +42,6 @@ import { QuickAddSheet } from "@/features/pantry/components/QuickAddSheet";
 
 import { EditItemSheet } from "@/features/pantry/components/EditItemSheet";
 
-import { Colors, Spacing } from "@/constants/theme";
-
 import { BulkExpirySheet } from "@/features/pantry/components/BulkExpirySheet";
 
 import { BulkMoveSheet } from "@/features/pantry/components/BulkMoveSheet";
@@ -68,7 +58,7 @@ const PANTRY_KEY = "pantry_items_v1";
 type ExpiringRow = PantryItem & {
   categoryLabel: string;
 
-  expiresInDays: number; // derived*
+  expiresInDays: number; // derived
 };
 
 type Category = (typeof CATEGORIES)[number];
@@ -114,11 +104,14 @@ export default function PantryScreen() {
     action: "removed" | "expired" | "used";
 
     historyEntryId?: string;
+
     operationId: number;
   } | null>(null);
 
   const nextUndoOperationId = useRef(0);
+
   const pendingHistoryWrites = useRef(new Map<number, Promise<string>>());
+
   const undoInProgress = useRef(false);
 
   const [openExpiring, setOpenExpiring] = useState(true);
@@ -165,8 +158,7 @@ export default function PantryScreen() {
     categoryKey: CategoryKey;
   } | null>(null);
 
-  // selected ids per category (so ids can collide across categories safely)*
-
+  // selected ids per category (so ids can collide across categories safely)
   const [selected, setSelected] = useState<Record<CategoryKey, Set<string>>>(
     () =>
       ALL_CATEGORY_KEYS.reduce(
@@ -180,8 +172,7 @@ export default function PantryScreen() {
       ),
   );
 
-  // ✅ Search*
-
+  // ✅ Search
   const [searchQuery, setSearchQuery] = useState("");
 
   const q = searchQuery.trim().toLowerCase();
@@ -190,8 +181,7 @@ export default function PantryScreen() {
 
   const allOpen = ALL_CATEGORY_KEYS.every((k) => openCategories[k]);
 
-  // -------------------- ✅ AsyncStorage (load) --------------------*
-
+  // -------------------- ✅ AsyncStorage (load) --------------------
   useEffect(() => {
     let cancelled = false;
 
@@ -226,8 +216,7 @@ export default function PantryScreen() {
     };
   }, [setPantry]);
 
-  // -------------------- ✅ AsyncStorage (save) --------------------*
-
+  // -------------------- ✅ AsyncStorage (save) --------------------
   useEffect(() => {
     if (!pantryLoaded) return;
 
@@ -246,13 +235,13 @@ export default function PantryScreen() {
     return () => clearTimeout(t);
   }, [pantry, pantryLoaded]);
 
-  // -------------------- Undo timer --------------------*
-
+  // -------------------- Undo timer --------------------
   useEffect(() => {
     if (!undo) return;
 
     const t = setTimeout(() => {
       pendingHistoryWrites.current.delete(undo.operationId);
+
       setUndo((current) =>
         current?.operationId === undo.operationId ? null : current,
       );
@@ -315,22 +304,32 @@ export default function PantryScreen() {
   // removed, restored, and removed again before an earlier write completes.
   function recordUndoableRemoval(
     item: PantryItem,
+
     action: "used" | "removed" | "expired",
   ) {
     const operationId = ++nextUndoOperationId.current;
+
     const currentList = usePantryStore.getState().pantry[item.categoryKey];
+
     const index = currentList.findIndex((entry) => entry.id === item.id);
+
     if (index === -1) return;
 
     setUndo({
       item,
+
       categoryKey: item.categoryKey,
+
       index,
+
       action,
+
       operationId,
     });
+
     setPantry((prev) => ({
       ...prev,
+
       [item.categoryKey]: prev[item.categoryKey].filter(
         (entry) => entry.id !== item.id,
       ),
@@ -338,9 +337,13 @@ export default function PantryScreen() {
 
     // Store the promise immediately so an immediate Undo can await it.
     pendingHistoryWrites.current.clear();
+
     const write = appendPantryHistory(item, action);
+
     pendingHistoryWrites.current.set(operationId, write);
+
     void write
+
       .then((historyEntryId) => {
         setUndo((current) =>
           current?.operationId === operationId
@@ -348,11 +351,13 @@ export default function PantryScreen() {
             : current,
         );
       })
+
       .catch((error) => console.warn("Failed to record pantry history", error));
   }
 
   function handleMarkUsed(item: PantryItem) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
     recordUndoableRemoval(item, "used");
   }
 
@@ -365,8 +370,7 @@ export default function PantryScreen() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // 1) Capture the items being deleted (BEFORE setPantry changes state)*
-
+    // 1) Capture the items being deleted (BEFORE setPantry changes state)
     const deleted: PantryItem[] = [];
 
     for (const k of ALL_CATEGORY_KEYS) {
@@ -379,8 +383,7 @@ export default function PantryScreen() {
       }
     }
 
-    // 2) Update pantry*
-
+    // 2) Update pantry
     setPantry((prev) => {
       const next: Record<CategoryKey, PantryItem[]> = { ...prev };
 
@@ -393,8 +396,7 @@ export default function PantryScreen() {
       return next;
     });
 
-    // 3) Write history entries (don’t await; your queue handles ordering)*
-
+    // 3) Write history entries (don’t await; your queue handles ordering)
     for (const it of deleted) {
       void appendPantryHistory(it, "removed");
     }
@@ -456,8 +458,7 @@ export default function PantryScreen() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // capture items BEFORE mutation*
-
+    // capture items BEFORE mutation
     const used: PantryItem[] = [];
 
     for (const k of ALL_CATEGORY_KEYS) {
@@ -468,14 +469,12 @@ export default function PantryScreen() {
       }
     }
 
-    // perform the actual update*
-
+    // perform the actual update
     applyToSelected(() => null);
 
-    // write history*
-
+    // write history
     for (const it of used) {
-      appendPantryHistory(it, "used"); // <- use your real action value*
+      appendPantryHistory(it, "used"); // <- use your real action value
     }
 
     clearSelection();
@@ -499,8 +498,7 @@ export default function PantryScreen() {
     applyToSelected((it) => ({
       ...it,
 
-      // If it had "no expiry", keep it no expiry (matches your old sentinel behavior)*
-
+      // If it had "no expiry", keep it no expiry (matches your old sentinel behavior)
       expiryDate: it.expiryDate ? setExpiryDaysFromToday(value) : null,
     }));
   };
@@ -557,35 +555,52 @@ export default function PantryScreen() {
 
   const undoDelete = async () => {
     const current = undo;
+
     if (!current || undoInProgress.current) return;
+
     undoInProgress.current = true;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // Hide Undo while processing; restore it if the history cleanup fails.
     setUndo(null);
+
     try {
       const write = pendingHistoryWrites.current.get(current.operationId);
+
       const historyEntryId = write ? await write : current.historyEntryId;
+
       if (!historyEntryId) throw new Error("Missing history entry for Undo");
+
       await removePantryHistoryEntry(historyEntryId);
+
       pendingHistoryWrites.current.delete(current.operationId);
 
       setPantry((prev) => {
         const list = prev[current.categoryKey];
+
         if (list.some((entry) => entry.id === current.item.id)) return prev;
+
         const nextList = list.slice();
+
         nextList.splice(
           Math.min(current.index, nextList.length),
+
           0,
+
           current.item,
         );
+
         return { ...prev, [current.categoryKey]: nextList };
       });
     } catch (error) {
       console.warn("Unable to undo pantry removal", error);
+
       setUndo(current);
+
       Alert.alert(
         "Undo failed",
+
         "Could not reverse the pantry history change. Please try again.",
       );
     } finally {
@@ -608,8 +623,7 @@ export default function PantryScreen() {
           style: "destructive",
 
           onPress: () => {
-            // Capture the expired items before removing them*
-
+            // Capture the expired items before removing them
             const itemsToExpire = [...expiredItems];
 
             setPantry((prev) => {
@@ -624,8 +638,7 @@ export default function PantryScreen() {
               return next;
             });
 
-            // Record each removed item as expired for history/analytics*
-
+            // Record each removed item as expired for history/analytics
             for (const item of itemsToExpire) {
               void appendPantryHistory(item, "expired");
             }
@@ -720,8 +733,7 @@ export default function PantryScreen() {
     ]);
   };
 
-  // ✅ Expired filtered by search*
-
+  // ✅ Expired filtered by search
   const expiredItems: ExpiringRow[] = useMemo(() => {
     const byKey = new Map<CategoryKey, string>();
 
@@ -737,7 +749,7 @@ export default function PantryScreen() {
           flat.push({
             ...item,
 
-            expiresInDays: d, // keep this in the row if UI uses it*
+            expiresInDays: d, // keep this in the row if UI uses it
 
             categoryKey: key,
 
@@ -752,8 +764,7 @@ export default function PantryScreen() {
     return flat;
   }, [pantry, q]);
 
-  // ✅ Expiring soon filtered by search*
-
+  // ✅ Expiring soon filtered by search
   const expiringSoon: ExpiringRow[] = useMemo(() => {
     const byKey = new Map<CategoryKey, string>();
 
@@ -765,18 +776,18 @@ export default function PantryScreen() {
       for (const item of pantry[key]) {
         const d = getExpiresInDays(item);
 
-        if (d >= 9999) continue; // no expiry*
+        if (d >= 9999) continue; // no expiry
 
-        if (d <= 0) continue; // expired → goes to exp iredItems*
+        if (d <= 0) continue; // expired → goes to exp iredItems
 
-        if (d > 7) continue; // out of “soon” window*
+        if (d > 7) continue; // out of “soon” window
 
         if (!matchesQuery(item, q)) continue;
 
         flat.push({
           ...item,
 
-          expiresInDays: d, // again, keep it updated if needed*
+          expiresInDays: d, // again, keep it updated if needed
 
           categoryKey: key,
 
@@ -814,208 +825,197 @@ export default function PantryScreen() {
     });
   }, [pantry, q, isSearching]);
 
+  const totalItems = ALL_CATEGORY_KEYS.reduce(
+    (sum, categoryKey) => sum + pantry[categoryKey].length,
+    0,
+  );
+  const visibleItemCount = ALL_CATEGORY_KEYS.reduce(
+    (sum, categoryKey) =>
+      sum + pantry[categoryKey].filter((item) => matchesQuery(item, q)).length,
+    0,
+  );
+
   return (
-    <View style={Screen.full}>
+    <View style={styles.screen}>
       <ScrollView
         style={styles.scroll}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          (bulkMode && selectedCount > 0) || undo
+            ? styles.scrollContentWithAction
+            : null,
+        ]}
       >
-        {/* Header row */}
-
-        <View style={[Layout.rowBetween, styles.headerRow]}>
-          <View style={styles.headerLeft}>
-            <Text style={TextStyles.screenTitle}>Pantry</Text>
-
-            <Text style={TextStyles.bodyMuted}>
-              Track what you have before it goes bad.
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={[ButtonStyles.primary, styles.addBtn]}
-            activeOpacity={0.8}
-            onPress={() => router.push("/add-item")}
-          >
-            <View style={Layout.rowCenter}>
+        <View style={styles.hero}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroEyebrowRow}>
               <Ionicons
-                name="add"
-                size={18}
-                color="#FFFFFF"
-                style={styles.addIcon}
+                name="basket-outline"
+                size={15}
+                color={PALETTE.heroMuted}
               />
-
-              <Text style={ButtonStyles.primaryText}>Add item</Text>
+              <Text style={styles.heroEyebrow}>YOUR KITCHEN, ORGANIZED</Text>
             </View>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroAddButton}
+              activeOpacity={0.8}
+              onPress={() => router.push("/add-item")}
+              accessibilityRole="button"
+              accessibilityLabel="Add pantry item"
+            >
+              <Ionicons name="add" size={19} color={PALETTE.slateDark} />
+              <Text style={styles.heroAddText}>Add item</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.heroTitle}>Your pantry.</Text>
+          <Text style={styles.heroDescription}>
+            Keep track of what's on hand and use more of what you buy.
+          </Text>
+          <View style={styles.heroMetrics}>
+            <View style={styles.heroMetric}>
+              <Text style={styles.heroMetricValue}>{totalItems}</Text>
+              <Text style={styles.heroMetricLabel}>ITEMS TRACKED</Text>
+            </View>
+            <View style={styles.heroMetricDivider} />
+            <View style={styles.heroMetric}>
+              <Text style={styles.heroMetricValue}>{expiringSoon.length}</Text>
+              <Text style={styles.heroMetricLabel}>
+                {isSearching ? "SOON · FILTERED" : "EXPIRING SOON"}
+              </Text>
+            </View>
+            <View style={styles.heroMetricDivider} />
+            <View style={styles.heroMetric}>
+              <Text style={styles.heroMetricValue}>{expiredItems.length}</Text>
+              <Text style={styles.heroMetricLabel}>
+                {isSearching ? "EXPIRED · FILTERED" : "EXPIRED"}
+              </Text>
+            </View>
+          </View>
         </View>
-
-        {/* Search bar */}
 
         <View style={styles.searchWrap}>
-          <View style={styles.searchRelative}>
-            <Ionicons
-              name="search-outline"
-              size={18}
-              color={Colors.textLight}
-              style={styles.searchIcon}
-            />
-
-            <TextInput
-              placeholder="Search pantry…"
-              placeholderTextColor={Colors.textLight}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCorrect={false}
-              autoCapitalize="none"
-              clearButtonMode="while-editing"
-              style={styles.searchInput}
-            />
-          </View>
-
+          <Ionicons name="search-outline" size={19} color={PALETTE.muted} />
+          <TextInput
+            placeholder="Search your pantry"
+            placeholderTextColor={PALETTE.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+            style={styles.searchInput}
+            accessibilityLabel="Search pantry items"
+          />
           {isSearching && (
-            <View style={[Layout.rowBetween, styles.searchMetaRow]}>
-              <Text style={TextStyles.small}>
-                Showing results for “{searchQuery.trim()}”
-              </Text>
-
-              <Pressable
-                onPress={() => setSearchQuery("")}
-                hitSlop={10}
-                style={styles.searchClearBtn}
-              >
-                <Text style={[TextStyles.small, styles.searchClearText]}>
-                  Clear
-                </Text>
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={() => setSearchQuery("")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Clear pantry search"
+            >
+              <Ionicons name="close-circle" size={19} color={PALETTE.muted} />
+            </Pressable>
           )}
         </View>
+        {isSearching && (
+          <Text style={styles.searchCaption}>
+            {visibleItemCount} matching{" "}
+            {visibleItemCount === 1 ? "item" : "items"} for “
+            {searchQuery.trim()}”
+          </Text>
+        )}
 
-        {/* Pills */}
-
-        <View style={styles.pillsRow}>
-          {/* Bulk */}
-
-          <TouchableOpacity
+        <View style={styles.toolbar}>
+          <Pressable
             onPress={toggleBulkMode}
-            activeOpacity={0.85}
-            style={[
-              styles.pill,
-
-              bulkMode ? styles.pillActive : styles.pillInactive,
-            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: bulkMode }}
+            style={[styles.toolButton, bulkMode && styles.toolButtonActive]}
           >
             <Ionicons
-              name={bulkMode ? "checkbox" : "square-outline"}
-              size={18}
-              color={Colors.text}
+              name={bulkMode ? "checkbox" : "checkbox-outline"}
+              size={17}
+              color={bulkMode ? PALETTE.paper : PALETTE.slate}
             />
-
-            <Text style={styles.pillText} numberOfLines={1}>
-              {bulkMode ? `Bulk ${selectedCount}` : "Bulk"}
+            <Text style={[styles.toolText, bulkMode && styles.toolTextActive]}>
+              {bulkMode ? `Selected (${selectedCount})` : "Select"}
             </Text>
-          </TouchableOpacity>
-
-          {/* Quick add */}
-
-          <TouchableOpacity
+          </Pressable>
+          <Pressable
             onPress={() => setQuickAddOpen(true)}
-            activeOpacity={0.85}
-            style={[styles.pill, styles.pillInactive]}
+            accessibilityRole="button"
+            style={styles.toolButton}
           >
-            <Ionicons name="add" size={18} color={Colors.text} />
-
-            <Text style={styles.pillText} numberOfLines={1}>
-              Add
-            </Text>
-          </TouchableOpacity>
-
-          {/* Expand / Collapse */}
-
-          <TouchableOpacity
+            <Ionicons
+              name="add-circle-outline"
+              size={18}
+              color={PALETTE.slate}
+            />
+            <Text style={styles.toolText}>Quick add</Text>
+          </Pressable>
+          <Pressable
             onPress={toggleAll}
-            activeOpacity={0.85}
-            style={[styles.pill, styles.pillInactive, styles.pillLast]}
+            accessibilityRole="button"
+            style={styles.toolButton}
           >
             <Ionicons
               name={allOpen ? "contract-outline" : "expand-outline"}
-              size={18}
-              color={Colors.text}
+              size={17}
+              color={PALETTE.slate}
             />
-
-            <Text style={styles.pillText} numberOfLines={1}>
+            <Text style={styles.toolText}>
               {allOpen ? "Collapse" : "Expand"}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
-
-        {/* Expired */}
 
         {expiredItems.length > 0 && (
           <View style={styles.sectionWrap}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setOpenExpired((v) => !v)}
-              style={[
-                CardStyles.subtle,
-
-                Layout.rowBetween,
-
-                styles.expiredHeaderCard,
-              ]}
-            >
-              <View style={Layout.row}>
-                <Ionicons
-                  name="time-outline"
-                  size={20}
-                  color={"rgba(60,60,60,0.85)"}
-                  style={styles.sectionIcon}
-                />
-
-                <View>
-                  <Text style={[TextStyles.sectionTitle, styles.expiredTitle]}>
-                    Expired
-                  </Text>
-
-                  <Text style={TextStyles.small}>
-                    {expiredItems.length} item
-                    {expiredItems.length === 1 ? "" : "s"}
+            <View style={[styles.sectionHeaderCard, styles.expiredHeader]}>
+              <Pressable
+                onPress={() => setOpenExpired((v) => !v)}
+                style={styles.sectionHeaderMain}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: openExpired }}
+              >
+                <View style={[styles.sectionIcon, styles.expiredIcon]}>
+                  <Ionicons
+                    name="time-outline"
+                    size={20}
+                    color={PALETTE.expired}
+                  />
+                </View>
+                <View style={styles.sectionHeadingCopy}>
+                  <Text style={styles.sectionHeading}>Expired</Text>
+                  <Text style={styles.sectionCount}>
+                    {expiredItems.length}{" "}
+                    {expiredItems.length === 1 ? "item" : "items"} to review
                   </Text>
                 </View>
-              </View>
-
-              <View style={Layout.row}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={(e) => {
-                    // @ts-ignore*
-
-                    e?.stopPropagation?.();
-
-                    showCategoryMenu({ type: "expired" });
-                  }}
-                  style={styles.menuBtn}
-                >
-                  <Ionicons
-                    name="ellipsis-vertical"
-                    size={18}
-                    color={Colors.textLight}
-                  />
-                </TouchableOpacity>
-
                 <Ionicons
-                  name={
-                    openExpired ? "chevron-up-outline" : "chevron-down-outline"
-                  }
-                  size={20}
-                  color={Colors.textLight}
+                  name={openExpired ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color={PALETTE.muted}
                 />
-              </View>
-            </TouchableOpacity>
-
+              </Pressable>
+              <Pressable
+                onPress={() => showCategoryMenu({ type: "expired" })}
+                style={styles.sectionMenu}
+                accessibilityRole="button"
+                accessibilityLabel="Expired items options"
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="ellipsis-vertical"
+                  size={19}
+                  color={PALETTE.muted}
+                />
+              </Pressable>
+            </View>
             {openExpired && (
-              <View style={styles.sectionListTop}>
+              <View style={styles.itemList}>
                 {expiredItems.map((item) => (
                   <PantryRow
                     key={`${item.categoryKey}:${item.id}`}
@@ -1024,8 +1024,7 @@ export default function PantryScreen() {
                     isSearching={isSearching}
                     checked={isSelected(item.categoryKey, item.id)}
                     onToggleSelect={() => {
-                      Haptics.selectionAsync();
-
+                      void Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
@@ -1039,72 +1038,51 @@ export default function PantryScreen() {
           </View>
         )}
 
-        {/* Expiring soon */}
-
         {expiringSoon.length > 0 && (
           <View style={styles.sectionWrap}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setOpenExpiring((v) => !v)}
-              style={[
-                CardStyles.subtle,
-
-                Layout.rowBetween,
-
-                styles.expiringHeaderCard,
-              ]}
-            >
-              <View style={Layout.row}>
-                <Ionicons
-                  name="alarm-outline"
-                  size={20}
-                  color={"rgba(140, 70, 0, 0.95)"}
-                  style={styles.sectionIcon}
-                />
-
-                <View>
-                  <Text style={[TextStyles.sectionTitle, styles.expiringTitle]}>
-                    Expiring soon
-                  </Text>
-
-                  <Text style={TextStyles.small}>
-                    {expiringSoon.length} item
-                    {expiringSoon.length === 1 ? "" : "s"}
+            <View style={[styles.sectionHeaderCard, styles.expiringHeader]}>
+              <Pressable
+                onPress={() => setOpenExpiring((v) => !v)}
+                style={styles.sectionHeaderMain}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: openExpiring }}
+              >
+                <View style={[styles.sectionIcon, styles.expiringIcon]}>
+                  <Ionicons
+                    name="alarm-outline"
+                    size={20}
+                    color={PALETTE.amber}
+                  />
+                </View>
+                <View style={styles.sectionHeadingCopy}>
+                  <Text style={styles.sectionHeading}>Expiring soon</Text>
+                  <Text style={styles.sectionCount}>
+                    {expiringSoon.length}{" "}
+                    {expiringSoon.length === 1 ? "item" : "items"} within 7 days
                   </Text>
                 </View>
-              </View>
-
-              <View style={Layout.row}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={(e) => {
-                    // @ts-ignore*
-
-                    e?.stopPropagation?.();
-
-                    showCategoryMenu({ type: "expiring" });
-                  }}
-                  style={styles.menuBtn}
-                >
-                  <Ionicons
-                    name="ellipsis-vertical"
-                    size={18}
-                    color={Colors.textLight}
-                  />
-                </TouchableOpacity>
-
                 <Ionicons
-                  name={
-                    openExpiring ? "chevron-up-outline" : "chevron-down-outline"
-                  }
-                  size={20}
-                  color={Colors.textLight}
+                  name={openExpiring ? "chevron-up" : "chevron-down"}
+                  size={18}
+                  color={PALETTE.muted}
                 />
-              </View>
-            </TouchableOpacity>
-
+              </Pressable>
+              <Pressable
+                onPress={() => showCategoryMenu({ type: "expiring" })}
+                style={styles.sectionMenu}
+                accessibilityRole="button"
+                accessibilityLabel="Expiring soon options"
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="ellipsis-vertical"
+                  size={19}
+                  color={PALETTE.muted}
+                />
+              </Pressable>
+            </View>
             {openExpiring && (
-              <View style={styles.sectionListTop}>
+              <View style={styles.itemList}>
                 {expiringSoon.map((item) => (
                   <PantryRow
                     key={`${item.categoryKey}:${item.id}`}
@@ -1113,13 +1091,12 @@ export default function PantryScreen() {
                     isSearching={isSearching}
                     checked={isSelected(item.categoryKey, item.id)}
                     onToggleSelect={() => {
-                      Haptics.selectionAsync();
-
+                      void Haptics.selectionAsync();
                       toggleSelected(item.categoryKey, item.id);
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)} // log inside confirm*
+                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
                     onSwipeDelete={() => handleRemove(item, "removed")}
                   />
                 ))}
@@ -1128,83 +1105,68 @@ export default function PantryScreen() {
           </View>
         )}
 
-        {/* Categories */}
+        <View style={styles.groupHeadingRow}>
+          <View>
+            <Text style={styles.eyebrow}>BROWSE YOUR FOOD</Text>
+            <Text style={styles.groupHeading}>Categories</Text>
+          </View>
+          <Text style={styles.groupHeadingMeta}>
+            {isSearching
+              ? `${visibleCategories.length} matching`
+              : `${CATEGORIES.length} groups`}
+          </Text>
+        </View>
 
-        {visibleCategories.map(({ cat, items }) => {
+        {visibleCategories.map(({ cat, items: categoryItems }) => {
           const isOpen = openCategories[cat.key];
-
           return (
             <View key={cat.key} style={styles.sectionWrap}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => toggleCategory(cat.key)}
-                style={[
-                  CardStyles.subtle,
-
-                  Layout.rowBetween,
-
-                  styles.categoryHeaderCard,
-
-                  isSearching ? styles.categoryHeaderSearching : null,
-                ]}
-              >
-                <View style={Layout.row}>
-                  <Ionicons
-                    name={cat.icon}
-                    size={20}
-                    color={Colors.text}
-                    style={styles.sectionIcon}
-                  />
-
-                  <View>
-                    <Text style={TextStyles.sectionTitle}>{cat.label}</Text>
-
-                    <Text style={TextStyles.small}>
-                      {items.length} item{items.length === 1 ? "" : "s"}
-                      {isSearching && pantry[cat.key].length !== items.length
-                        ? ` (of ${pantry[cat.key].length})`
+              <View style={styles.sectionHeaderCard}>
+                <Pressable
+                  onPress={() => toggleCategory(cat.key)}
+                  style={styles.sectionHeaderMain}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: isOpen }}
+                >
+                  <View style={styles.sectionIcon}>
+                    <Ionicons name={cat.icon} size={20} color={PALETTE.slate} />
+                  </View>
+                  <View style={styles.sectionHeadingCopy}>
+                    <Text style={styles.sectionHeading}>{cat.label}</Text>
+                    <Text style={styles.sectionCount}>
+                      {categoryItems.length}{" "}
+                      {categoryItems.length === 1 ? "item" : "items"}
+                      {isSearching &&
+                      pantry[cat.key].length !== categoryItems.length
+                        ? ` · ${pantry[cat.key].length} total`
                         : ""}
                     </Text>
                   </View>
-                </View>
-
-                <View style={Layout.row}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={(e) => {
-                      // @ts-ignore*
-
-                      e?.stopPropagation?.();
-
-                      showCategoryMenu({ type: "normal", cat });
-                    }}
-                    style={styles.menuBtn}
-                  >
-                    <Ionicons
-                      name="ellipsis-vertical"
-                      size={18}
-                      color={Colors.textLight}
-                    />
-                  </TouchableOpacity>
-
                   <Ionicons
-                    name={
-                      isOpen ? "chevron-up-outline" : "chevron-down-outline"
-                    }
-                    size={20}
-                    color={Colors.textLight}
+                    name={isOpen ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={PALETTE.muted}
                   />
-                </View>
-              </TouchableOpacity>
-
-              {isOpen && items.length > 0 && (
-                <View style={styles.sectionListTop}>
-                  {items
-
+                </Pressable>
+                <Pressable
+                  onPress={() => showCategoryMenu({ type: "normal", cat })}
+                  style={styles.sectionMenu}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${cat.label} options`}
+                  hitSlop={8}
+                >
+                  <Ionicons
+                    name="ellipsis-vertical"
+                    size={19}
+                    color={PALETTE.muted}
+                  />
+                </Pressable>
+              </View>
+              {isOpen && categoryItems.length > 0 && (
+                <View style={styles.itemList}>
+                  {categoryItems
                     .slice()
-
                     .sort((a, b) => getExpiresInDays(a) - getExpiresInDays(b))
-
                     .map((item) => (
                       <PantryRow
                         key={`${cat.key}:${item.id}`}
@@ -1213,8 +1175,7 @@ export default function PantryScreen() {
                         isSearching={isSearching}
                         checked={isSelected(cat.key, item.id)}
                         onToggleSelect={() => {
-                          Haptics.selectionAsync();
-
+                          void Haptics.selectionAsync();
                           toggleSelected(cat.key, item.id);
                         }}
                         onPressUsed={() => handleMarkUsed(item)}
@@ -1225,11 +1186,15 @@ export default function PantryScreen() {
                     ))}
                 </View>
               )}
-
-              {isOpen && items.length === 0 && !isSearching && (
-                <View style={[CardStyles.subtle, styles.emptyCatCard]}>
-                  <Text style={TextStyles.small}>
-                    No items in this category yet.
+              {isOpen && categoryItems.length === 0 && !isSearching && (
+                <View style={styles.emptyCategory}>
+                  <Ionicons
+                    name="leaf-outline"
+                    size={17}
+                    color={PALETTE.muted}
+                  />
+                  <Text style={styles.emptyCategoryText}>
+                    Nothing here yet. Add an item anytime.
                   </Text>
                 </View>
               )}
@@ -1237,93 +1202,112 @@ export default function PantryScreen() {
           );
         })}
 
-        {/* empty search state */}
-
         {isSearching &&
           expiredItems.length === 0 &&
           expiringSoon.length === 0 &&
           visibleCategories.length === 0 && (
-            <View style={[CardStyles.subtle, styles.emptySearchCard]}>
-              <Text style={TextStyles.small}>No items match your search.</Text>
+            <View style={styles.emptySearchCard}>
+              <Ionicons name="search-outline" size={27} color={PALETTE.slate} />
+              <Text style={styles.emptySearchTitle}>No matching items</Text>
+              <Text style={styles.emptySearchText}>
+                Try a different name or clear the search.
+              </Text>
+              <Pressable
+                onPress={() => setSearchQuery("")}
+                style={styles.emptySearchButton}
+              >
+                <Text style={styles.emptySearchButtonText}>Clear search</Text>
+              </Pressable>
             </View>
           )}
+        <Text style={styles.footer}>KITCHENBUDDY · A LITTLE LESS WASTE</Text>
       </ScrollView>
 
       {bulkMode && selectedCount > 0 && (
-        <View
-          style={[
-            styles.bulkBar,
-
-            { bottom: undo ? Spacing.lg + 56 : Spacing.lg },
-          ]}
-        >
-          <Text
-            style={[TextStyles.small, styles.bulkBarText]}
-            numberOfLines={1}
+        <View style={[styles.bulkBar, { bottom: undo ? 100 : 18 }]}>
+          <View style={styles.bulkTopRow}>
+            <View style={styles.bulkCountIcon}>
+              <Ionicons name="checkbox" size={18} color={PALETTE.paper} />
+            </View>
+            <Text style={styles.bulkBarTitle}>{selectedCount} selected</Text>
+            <Pressable
+              onPress={clearSelection}
+              accessibilityRole="button"
+              style={styles.bulkClearButton}
+            >
+              <Text style={styles.bulkClearText}>Clear selection</Text>
+            </Pressable>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bulkActions}
           >
-            {selectedCount} selected
-          </Text>
-
-          <Pressable onPress={bulkMarkUsed} style={styles.bulkActionBtn}>
-            <Text style={[TextStyles.small, styles.bulkActionText]}>Used</Text>
-          </Pressable>
-
-          <Pressable onPress={openBulkExpiryMenu} style={styles.bulkActionBtn}>
-            <Text style={[TextStyles.small, styles.bulkActionText]}>
-              Expiry
-            </Text>
-          </Pressable>
-
-          <Pressable onPress={openBulkMoveMenu} style={styles.bulkActionBtn}>
-            <Text style={[TextStyles.small, styles.bulkActionText]}>Move</Text>
-          </Pressable>
-
-          <Pressable onPress={clearSelection} style={styles.bulkActionBtn}>
-            <Text style={[TextStyles.small, styles.bulkActionText]}>Clear</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => {
-              Alert.alert(
-                "Delete selected?",
-
-                `Delete ${selectedCount} items?`,
-
-                [
-                  { text: "Cancel", style: "cancel" },
-
-                  {
-                    text: "Delete",
-
-                    style: "destructive",
-
-                    onPress: bulkDeleteSelected,
-                  },
-                ],
-              );
-            }}
-            style={styles.bulkActionBtn}
-          >
-            <Text style={[TextStyles.small, styles.bulkActionText]}>
-              Delete
-            </Text>
-          </Pressable>
+            <Pressable onPress={bulkMarkUsed} style={styles.bulkAction}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={17}
+                color={PALETTE.paper}
+              />
+              <Text style={styles.bulkActionText}>Used</Text>
+            </Pressable>
+            <Pressable onPress={openBulkExpiryMenu} style={styles.bulkAction}>
+              <Ionicons
+                name="calendar-outline"
+                size={17}
+                color={PALETTE.paper}
+              />
+              <Text style={styles.bulkActionText}>Expiry</Text>
+            </Pressable>
+            <Pressable onPress={openBulkMoveMenu} style={styles.bulkAction}>
+              <Ionicons
+                name="swap-horizontal-outline"
+                size={17}
+                color={PALETTE.paper}
+              />
+              <Text style={styles.bulkActionText}>Move</Text>
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                Alert.alert(
+                  "Delete selected?",
+                  `Delete ${selectedCount} items?`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: bulkDeleteSelected,
+                    },
+                  ],
+                )
+              }
+              style={[styles.bulkAction, styles.bulkDeleteAction]}
+            >
+              <Ionicons name="trash-outline" size={17} color={PALETTE.paper} />
+              <Text style={styles.bulkActionText}>Delete</Text>
+            </Pressable>
+          </ScrollView>
         </View>
       )}
 
       {undo && (
         <View style={styles.undoBar}>
-          <Text style={[TextStyles.small, styles.undoText]} numberOfLines={2}>
+          <Ionicons name="arrow-undo-outline" size={19} color={PALETTE.paper} />
+          <Text style={styles.undoText} numberOfLines={2}>
             {undo.action === "used"
-              ? "Marked used "
+              ? "Marked used: "
               : undo.action === "expired"
-                ? "Marked expired "
-                : "Removed "}{" "}
+                ? "Marked expired: "
+                : "Removed: "}
             {undo.item.name}
           </Text>
-
-          <Pressable onPress={undoDelete} style={styles.undoBtn}>
-            <Text style={[TextStyles.small, styles.undoBtnText]}>UNDO</Text>
+          <Pressable
+            onPress={() => void undoDelete()}
+            style={styles.undoButton}
+            accessibilityRole="button"
+          >
+            <Text style={styles.undoButtonText}>UNDO</Text>
           </Pressable>
         </View>
       )}
@@ -1334,23 +1318,19 @@ export default function PantryScreen() {
         onAddDays={bulkAddExpiryDays}
         onSetDays={bulkSetExpiryDays}
       />
-
       <BulkMoveSheet
         open={bulkMoveOpen}
         onClose={() => setBulkMoveOpen(false)}
         onMoveTo={bulkMoveTo}
       />
-
       <QuickAddSheet
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
       />
-
       <EditItemSheet
         open={editOpen}
         onClose={() => {
           setEditOpen(false);
-
           setEditTarget(null);
         }}
         target={editTarget}
@@ -1359,186 +1339,340 @@ export default function PantryScreen() {
   );
 }
 
-/* -------------------- Styles -------------------- */
+const PALETTE = {
+  bg: "#F6F3EE",
+  paper: "#FFFEFB",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDark: "#485F6A",
+  heroMuted: "#DAE3E5",
+  taupe: "#E8E2DA",
+  border: "#E9E5DE",
+  cream: "#EDE6DA",
+  expired: "#965D57",
+  amber: "#926C3D",
+};
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: PALETTE.bg },
   scroll: { flex: 1 },
-
-  scrollContent: {
-    paddingHorizontal: Spacing.lg,
-
-    paddingTop: Spacing.lg,
-
-    paddingBottom: Spacing.xl,
+  scrollContent: { paddingHorizontal: 18, paddingTop: 17, paddingBottom: 48 },
+  scrollContentWithAction: { paddingBottom: 218 },
+  hero: {
+    backgroundColor: PALETTE.slateDark,
+    borderRadius: 25,
+    padding: 21,
+    paddingBottom: 20,
+    marginBottom: 17,
   },
-
-  headerRow: { marginBottom: Spacing.lg, columnGap: Spacing.md },
-
-  headerLeft: { flex: 1, paddingRight: Spacing.sm },
-
-  addBtn: { flexShrink: 0 },
-
-  addIcon: { marginRight: 4 },
-
-  searchWrap: { marginBottom: Spacing.md },
-
-  searchRelative: { position: "relative" },
-
-  searchIcon: { position: "absolute", left: 12, top: 12, zIndex: 1 },
-
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 13,
+  },
+  heroEyebrowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+    gap: 7,
+  },
+  heroEyebrow: {
+    color: PALETTE.heroMuted,
+    fontSize: 9,
+    letterSpacing: 1.8,
+    fontWeight: "700",
+  },
+  heroAddButton: {
+    backgroundColor: PALETTE.paper,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  heroAddText: { color: PALETTE.slateDark, fontWeight: "700", fontSize: 12 },
+  heroTitle: {
+    color: PALETTE.paper,
+    fontSize: 31,
+    lineHeight: 38,
+    fontFamily: "serif",
+    fontWeight: "600",
+  },
+  heroDescription: {
+    color: PALETTE.heroMuted,
+    fontSize: 12,
+    lineHeight: 19,
+    marginTop: 5,
+    maxWidth: 285,
+  },
+  heroMetrics: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#82919A",
+  },
+  heroMetric: { flex: 1, alignItems: "center", minWidth: 0 },
+  heroMetricValue: {
+    color: PALETTE.paper,
+    fontSize: 23,
+    fontWeight: "700",
+    fontFamily: "serif",
+  },
+  heroMetricLabel: {
+    color: PALETTE.heroMuted,
+    fontSize: 8,
+    letterSpacing: 0.55,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  heroMetricDivider: {
+    height: 31,
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: "#82919A",
+  },
+  searchWrap: {
+    minHeight: 51,
+    backgroundColor: PALETTE.paper,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 15,
+  },
   searchInput: {
-    backgroundColor: "rgba(120,120,120,0.10)",
-
-    borderColor: "rgba(120,120,120,0.18)",
-
-    borderWidth: 1,
-
-    borderRadius: 14,
-
-    paddingLeft: 38,
-
-    paddingRight: 12,
-
-    paddingVertical: 10,
-
-    fontSize: 16,
-
-    color: Colors.text,
+    flex: 1,
+    fontSize: 14,
+    color: PALETTE.ink,
+    paddingVertical: 11,
   },
-
-  searchMetaRow: { marginTop: 8 },
-
-  searchClearBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-
-  searchClearText: { fontWeight: "700" },
-
-  pillsRow: {
+  searchCaption: {
+    color: PALETTE.muted,
+    fontSize: 11,
+    marginTop: 7,
+    paddingHorizontal: 4,
+  },
+  toolbar: { flexDirection: "row", gap: 7, marginTop: 12, marginBottom: 23 },
+  toolButton: {
+    flex: 1,
+    minHeight: 43,
     flexDirection: "row",
-
-    alignItems: "center",
-
     justifyContent: "center",
-
-    marginBottom: Spacing.sm,
-  },
-
-  pill: {
-    flexDirection: "row",
-
     alignItems: "center",
-
-    paddingHorizontal: 20,
-
-    paddingVertical: 8,
-
-    borderRadius: 999,
-
-    marginRight: Spacing.xs,
-  },
-
-  pillLast: { marginRight: 0 },
-
-  pillActive: { backgroundColor: "rgba(0,0,0,0.10)" },
-
-  pillInactive: { backgroundColor: "rgba(0,0,0,0.05)" },
-
-  pillText: { fontSize: 15, marginLeft: 6, color: Colors.text },
-
-  sectionWrap: { marginBottom: Spacing.md },
-
-  sectionIcon: { marginRight: Spacing.sm },
-
-  sectionListTop: { marginTop: Spacing.sm },
-
-  menuBtn: { paddingHorizontal: Spacing.sm, paddingVertical: 6 },
-
-  expiredHeaderCard: {
-    paddingVertical: Spacing.sm,
-
-    backgroundColor: "rgba(120, 120, 120, 0.12)",
-
-    borderColor: "rgba(120, 120, 120, 0.22)",
-
+    borderRadius: 13,
+    backgroundColor: PALETTE.paper,
     borderWidth: 1,
+    borderColor: PALETTE.border,
+    gap: 5,
+    paddingHorizontal: 5,
   },
-
-  expiredTitle: { color: "rgba(60,60,60,0.9)" },
-
-  expiringHeaderCard: {
-    paddingVertical: Spacing.sm,
-
-    backgroundColor: "rgba(255, 149, 0, 0.14)",
-
-    borderColor: "rgba(140, 70, 0, 0.18)",
-
+  toolButtonActive: {
+    backgroundColor: PALETTE.slate,
+    borderColor: PALETTE.slate,
+  },
+  toolText: { fontSize: 11, fontWeight: "700", color: PALETTE.slate },
+  toolTextActive: { color: PALETTE.paper },
+  sectionWrap: { marginBottom: 12 },
+  sectionHeaderCard: {
+    backgroundColor: PALETTE.paper,
+    borderRadius: 17,
     borderWidth: 1,
+    borderColor: PALETTE.border,
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 77,
+    paddingLeft: 13,
+    paddingRight: 7,
   },
-
-  expiringTitle: { color: "rgba(140, 70, 0, 0.95)" },
-
-  categoryHeaderCard: {
-    paddingVertical: Spacing.sm,
+  expiredHeader: { backgroundColor: "#F5EDEA", borderColor: "#EADBD6" },
+  expiringHeader: { backgroundColor: "#F7F0E5", borderColor: "#EDE0CB" },
+  sectionHeaderMain: {
+    flex: 1,
+    minHeight: 73,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
   },
-
-  categoryHeaderSearching: { opacity: 0.95 },
-
-  emptyCatCard: { marginTop: Spacing.sm },
-
-  emptySearchCard: { marginTop: Spacing.sm },
-
+  sectionIcon: {
+    width: 41,
+    height: 41,
+    borderRadius: 13,
+    backgroundColor: "#F1ECE5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  expiredIcon: { backgroundColor: "#EEDDD8" },
+  expiringIcon: { backgroundColor: "#EFE2CC" },
+  sectionHeadingCopy: { flex: 1, paddingVertical: 10 },
+  sectionHeading: { color: PALETTE.ink, fontSize: 15, fontWeight: "700" },
+  sectionCount: { color: PALETTE.muted, fontSize: 11, marginTop: 4 },
+  sectionMenu: {
+    paddingHorizontal: 10,
+    minHeight: 51,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  itemList: { paddingTop: 8, gap: 5 },
+  groupHeadingRow: {
+    marginTop: 16,
+    marginBottom: 13,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  eyebrow: {
+    color: PALETTE.slate,
+    fontSize: 9,
+    letterSpacing: 1.45,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  groupHeading: {
+    color: PALETTE.ink,
+    fontSize: 24,
+    lineHeight: 29,
+    fontFamily: "serif",
+    fontWeight: "600",
+  },
+  groupHeadingMeta: { fontSize: 11, color: PALETTE.muted, marginBottom: 4 },
+  emptyCategory: {
+    marginTop: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: PALETTE.paper,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    gap: 9,
+  },
+  emptyCategoryText: { color: PALETTE.muted, fontSize: 12, flex: 1 },
+  emptySearchCard: {
+    alignItems: "center",
+    backgroundColor: PALETTE.paper,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    padding: 27,
+    marginTop: 10,
+  },
+  emptySearchTitle: {
+    color: PALETTE.ink,
+    fontSize: 20,
+    fontFamily: "serif",
+    marginTop: 11,
+  },
+  emptySearchText: {
+    color: PALETTE.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  emptySearchButton: {
+    backgroundColor: PALETTE.slate,
+    borderRadius: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
+  emptySearchButtonText: {
+    color: PALETTE.paper,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  footer: {
+    color: "#A4A099",
+    fontSize: 9,
+    letterSpacing: 1.25,
+    textAlign: "center",
+    marginTop: 23,
+  },
   bulkBar: {
     position: "absolute",
-
-    left: Spacing.lg,
-
-    right: Spacing.lg,
-
-    padding: Spacing.md,
-
-    borderRadius: 18,
-
-    backgroundColor: "rgba(20,20,20,0.92)",
-
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    flexWrap: "wrap",
-
-    justifyContent: "flex-start",
+    left: 13,
+    right: 13,
+    borderRadius: 19,
+    backgroundColor: PALETTE.slateDark,
+    paddingTop: 12,
+    paddingBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.13,
+    shadowRadius: 12,
+    elevation: 7,
   },
-
-  bulkBarText: { color: "#fff" },
-
-  bulkActionBtn: { paddingHorizontal: 10, paddingVertical: 8, marginRight: 6 },
-
-  bulkActionText: { color: "#fff", fontWeight: "700" },
-
+  bulkTopRow: {
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    gap: 8,
+  },
+  bulkCountIcon: {
+    width: 27,
+    height: 27,
+    borderRadius: 9,
+    backgroundColor: "#6D828C",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bulkBarTitle: {
+    color: PALETTE.paper,
+    fontSize: 14,
+    fontWeight: "700",
+    flex: 1,
+  },
+  bulkClearButton: { padding: 5 },
+  bulkClearText: { color: PALETTE.heroMuted, fontSize: 11, fontWeight: "700" },
+  bulkActions: { paddingHorizontal: 12, gap: 7 },
+  bulkAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: "#6A7F89",
+  },
+  bulkDeleteAction: { backgroundColor: "#8F625E" },
+  bulkActionText: { color: PALETTE.paper, fontSize: 11, fontWeight: "700" },
   undoBar: {
     position: "absolute",
-
-    left: Spacing.lg,
-
-    right: Spacing.lg,
-
-    bottom: Spacing.lg,
-
-    padding: Spacing.md,
-
+    bottom: 18,
+    left: 13,
+    right: 13,
+    minHeight: 64,
     borderRadius: 16,
-
-    backgroundColor: "rgba(20,20,20,0.92)",
-
+    backgroundColor: PALETTE.ink,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     flexDirection: "row",
-
     alignItems: "center",
-
-    justifyContent: "space-between",
+    gap: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
-
-  undoText: { color: "#fff", flex: 1 },
-
-  undoBtn: { paddingHorizontal: Spacing.md, paddingVertical: 8 },
-
-  undoBtnText: { color: "rgba(255,255,255,0.95)", fontWeight: "700" },
+  undoText: { color: PALETTE.paper, fontSize: 12, lineHeight: 17, flex: 1 },
+  undoButton: {
+    paddingVertical: 9,
+    paddingHorizontal: 11,
+    borderRadius: 9,
+    backgroundColor: "#46565A",
+  },
+  undoButtonText: {
+    color: PALETTE.paper,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
 });

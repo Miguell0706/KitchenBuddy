@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   SafeAreaView,
@@ -8,12 +9,8 @@ import {
   Text,
   View,
 } from "react-native";
-import {
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
-} from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   getPantryHistory,
   type PantryHistoryEntry,
@@ -27,7 +24,22 @@ import {
   getPantryRepurchaseStats,
   type AnalyticsRange,
 } from "@/features/pantry/analytics";
-import { useRecipesStore } from "@/features/recipes/store"; // Adjust if your recipes store lives at another path.
+import { useRecipesStore } from "@/features/recipes/store";
+
+const PALETTE = {
+  background: "#F6F3EE",
+  paper: "#FFFEFB",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDark: "#485F6A",
+  taupe: "#E8E2DA",
+  line: "#E9E5DE",
+  cream: "#EDE6DA",
+  heroText: "#F9F6F0",
+};
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 const RANGES: { label: string; value: AnalyticsRange }[] = [
   { label: "30 Days", value: "30d" },
@@ -46,10 +58,53 @@ function formatDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function formatCategory(value: string) {
+  if (value === "meatSeafood") return "Meat & Seafood";
+  if (value === "dairyEggs") return "Dairy & Eggs";
+  return value
+    .replace(/([A-Z])/g, " $1")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/^./, (ch) => ch.toUpperCase());
+}
+
+function SectionHeading({
+  icon,
+  title,
+  caption,
+}: {
+  icon: IconName;
+  title: string;
+  caption?: string;
+}) {
+  return (
+    <View style={styles.sectionHeading}>
+      <View style={styles.sectionIcon}>
+        <Ionicons name={icon} size={18} color={PALETTE.slateDark} />
+      </View>
+      <View style={styles.sectionHeadingText}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {caption ? <Text style={styles.sectionCaption}>{caption}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: IconName;
+}) {
   return (
     <View style={styles.stat}>
-      <Text style={styles.statValue}>{value}</Text>
+      <Ionicons name={icon} size={18} color={PALETTE.slate} />
+      <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>
+        {value}
+      </Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -57,7 +112,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function IngredientPage() {
   const params = useLocalSearchParams<{ name?: string | string[] }>();
-  const router = useRouter();
   const rawName = Array.isArray(params.name) ? params.name[0] : params.name;
   const ingredientName = (rawName ?? "Unknown Ingredient").replace(/_/g, " ");
   const key = normalize(ingredientName);
@@ -76,8 +130,7 @@ export default function IngredientPage() {
       let active = true;
       async function load() {
         setLoading(true);
-        // Image choices live in the shared override store, not Analytics itself.
-        // Recheck on focus so an image changed in Scan Review or Pantry shows here.
+        // Recheck the shared image override on focus: Scan Review and Pantry can change it.
         try {
           const [events, pantry, override] = await Promise.all([
             getPantryHistory(),
@@ -127,6 +180,7 @@ export default function IngredientPage() {
     () => getPantryItemStats(ingredientEvents, range)[0],
     [ingredientEvents, range],
   );
+  // These two metrics are intentionally all-time, independent of the selected range.
   const timing = useMemo(
     () => getPantryItemTimingStats(ingredientEvents)[0],
     [ingredientEvents],
@@ -135,8 +189,8 @@ export default function IngredientPage() {
     () => getPantryRepurchaseStats(ingredientEvents)[0],
     [ingredientEvents],
   );
-  // Manual choice first. If none exists, use a matching current pantry item's
-  // automatic image. When neither exists, the existing placeholder is shown.
+
+  // Manual image preference has priority over an image attached to a current pantry item.
   const imageUrl =
     preferredImage?.url ??
     currentItems.find((item) => item.ingredientImage?.url)?.ingredientImage
@@ -149,7 +203,7 @@ export default function IngredientPage() {
       savedRecipes.filter((recipe) =>
         recipe.ingredients.some((line) => {
           const normalizedLine = normalize(line);
-          // Whole-phrase matching avoids substring false positives such as "ham" in "chamomile".
+          // Whole-phrase match: e.g. "ham" must not match "chamomile".
           const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           return (
             Boolean(key) &&
@@ -167,260 +221,594 @@ export default function IngredientPage() {
       <Stack.Screen
         options={{ title: ingredientName, headerBackTitle: "Back" }}
       />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
-          {imageUrl ? (
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.heroImage, styles.imagePlaceholder]}>
-              <Text style={styles.imageIcon}>🥬</Text>
+          <View style={styles.heroTop}>
+            <Text style={styles.eyebrow}>YOUR INGREDIENT JOURNAL</Text>
+            <View style={styles.heroMark}>
+              <Ionicons
+                name="leaf-outline"
+                size={20}
+                color={PALETTE.slateDark}
+              />
             </View>
-          )}
-          <View style={styles.heroInfo}>
-            <Text style={styles.title}>{ingredientName}</Text>
-            <Text style={styles.subtitle}>
-              {category
-                ? category.replace(/([A-Z])/g, " $1")
-                : "Ingredient Insights"}
-            </Text>
-            <Text style={styles.status}>
-              {currentItems.length
-                ? `In pantry · ${currentItems.length} ${currentItems.length === 1 ? "entry" : "entries"}`
-                : "Not currently in pantry"}
-            </Text>
           </View>
-        </View>
-
-        <Text style={styles.sectionTitle}>Current Inventory</Text>
-        <View style={styles.card}>
-          {loading ? (
-            <Text style={styles.muted}>Loading...</Text>
-          ) : currentItems.length === 0 ? (
-            <Text style={styles.muted}>No current pantry entries.</Text>
-          ) : (
-            currentItems.map((item) => (
-              <View key={item.id} style={styles.inventoryRow}>
-                <Text style={styles.inventoryName}>
-                  {item.quantity || "Quantity not set"}
-                </Text>
-                <Text style={styles.muted}>
-                  Expires: {formatDate(item.expiryDate)}
-                </Text>
+          <View style={styles.heroBody}>
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.heroImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.heroImage, styles.heroPlaceholder]}>
+                <Ionicons
+                  name="nutrition-outline"
+                  size={36}
+                  color={PALETTE.slateDark}
+                />
               </View>
-            ))
-          )}
-        </View>
-
-        <Text style={styles.sectionTitle}>Ingredient Analytics</Text>
-        <View style={styles.rangeRow}>
-          {RANGES.map((option) => (
-            <Pressable
-              key={option.value}
-              onPress={() => setRange(option.value)}
-              style={[
-                styles.rangeButton,
-                range === option.value && styles.rangeSelected,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.rangeText,
-                  range === option.value && styles.rangeTextSelected,
-                ]}
-              >
-                {option.label}
+            )}
+            <View style={styles.heroInfo}>
+              <Text style={styles.heroTitle} numberOfLines={3}>
+                {ingredientName}
               </Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.statsGrid}>
-          <Stat label="Times Added" value={stats?.entered ?? 0} />
-          <Stat label="Times Used" value={stats?.used ?? 0} />
-          <Stat label="Times Expired" value={stats?.expired ?? 0} />
-          <Stat
-            label="Utilization"
-            value={stats?.resolved ? `${stats.utilizationRate}%` : "—"}
-          />
-          <Stat
-            label="Waste Rate"
-            value={stats?.resolved ? `${stats.wasteRate}%` : "—"}
-          />
-          <Stat label="Other Removals" value={stats?.removed ?? 0} />
-        </View>
-        <Text style={styles.note}>
-          Counts reflect recorded pantry events, not quantities consumed.
-        </Text>
-
-        <Text style={styles.sectionTitle}>Purchase & Usage Patterns</Text>
-        <View style={styles.card}>
-          <View style={styles.detailRow}>
-            <Text style={styles.muted}>Average days before use</Text>
-            <Text style={styles.detailValue}>
-              {timing?.averageDaysBeforeUse ?? "—"}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.muted}>Average days before expiration</Text>
-            <Text style={styles.detailValue}>
-              {timing?.averageDaysBeforeExpiry ?? "—"}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.muted}>Average days between additions</Text>
-            <Text style={styles.detailValue}>
-              {repurchase?.averageDaysBetween ?? "—"}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.muted}>Typical days between additions</Text>
-            <Text style={styles.detailValue}>
-              {repurchase?.typicalDaysBetween ?? "—"}
-            </Text>
-          </View>
-          <Text style={styles.note}>
-            Patterns use all-time history, regardless of the selected date
-            range.
-          </Text>
-        </View>
-
-        <Text style={styles.sectionTitle}>
-          Saved Recipes ({matchingRecipes.length})
-        </Text>
-        <View style={styles.card}>
-          {matchingRecipes.length === 0 ? (
-            <Text style={styles.muted}>
-              No saved recipes containing this ingredient yet.
-            </Text>
-          ) : (
-            matchingRecipes.map((recipe) => (
-              <View key={recipe.title} style={styles.recipeRow}>
-                {recipe.image?.url ? (
-                  <Image
-                    source={{ uri: recipe.image.url }}
-                    style={styles.recipeImage}
-                  />
-                ) : (
-                  <View style={[styles.recipeImage, styles.imagePlaceholder]}>
-                    <Text>🍽️</Text>
-                  </View>
-                )}
-                <View style={styles.recipeInfo}>
-                  <Text style={styles.recipeTitle}>{recipe.title}</Text>
-                  <Text style={styles.muted}>
-                    {recipe.ingredients.length} ingredients
-                  </Text>
-                </View>
+              <Text style={styles.heroCategory}>
+                {category
+                  ? formatCategory(String(category))
+                  : "Ingredient Insights"}
+              </Text>
+              <View style={styles.heroStatus}>
+                <Ionicons
+                  name={
+                    currentItems.length
+                      ? "checkmark-circle-outline"
+                      : "archive-outline"
+                  }
+                  size={14}
+                  color={PALETTE.heroText}
+                />
+                <Text style={styles.heroStatusText}>
+                  {currentItems.length
+                    ? `In pantry · ${currentItems.length} ${currentItems.length === 1 ? "entry" : "entries"}`
+                    : "Not currently in pantry"}
+                </Text>
               </View>
-            ))
-          )}
+            </View>
+          </View>
         </View>
+
+        <View style={styles.section}>
+          <SectionHeading
+            icon="basket-outline"
+            title="Current inventory"
+            caption="What's in your pantry right now"
+          />
+          <View style={styles.card}>
+            {loading ? (
+              <View style={styles.stateRow}>
+                <ActivityIndicator color={PALETTE.slate} />
+                <Text style={styles.muted}>Loading inventory…</Text>
+              </View>
+            ) : currentItems.length === 0 ? (
+              <View style={styles.emptyRow}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="archive-outline"
+                    size={22}
+                    color={PALETTE.slate}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No current pantry entries</Text>
+                <Text style={styles.emptyText}>
+                  This ingredient isn't currently saved in your pantry.
+                </Text>
+              </View>
+            ) : (
+              currentItems.map((item, index) => (
+                <View
+                  key={item.id}
+                  style={[styles.inventoryRow, index > 0 && styles.rowDivider]}
+                >
+                  <View style={styles.inventoryIcon}>
+                    <Ionicons
+                      name="cube-outline"
+                      size={17}
+                      color={PALETTE.slate}
+                    />
+                  </View>
+                  <View style={styles.inventoryInfo}>
+                    <Text style={styles.inventoryName}>
+                      {item.quantity || "Quantity not set"}
+                    </Text>
+                    <Text style={styles.muted}>
+                      Expires: {formatDate(item.expiryDate)}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeading
+            icon="analytics-outline"
+            title="Ingredient analytics"
+            caption="How this ingredient moves through your pantry"
+          />
+          <View style={styles.rangeRow}>
+            {RANGES.map((option) => {
+              const active = range === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setRange(option.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    styles.rangeButton,
+                    active && styles.rangeSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.rangeText,
+                      active && styles.rangeTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={styles.statsGrid}>
+            <Stat
+              label="Times added"
+              value={stats?.entered ?? 0}
+              icon="add-circle-outline"
+            />
+            <Stat
+              label="Times used"
+              value={stats?.used ?? 0}
+              icon="checkmark-done-outline"
+            />
+            <Stat
+              label="Times expired"
+              value={stats?.expired ?? 0}
+              icon="time-outline"
+            />
+            <Stat
+              label="Utilization"
+              value={stats?.resolved ? `${stats.utilizationRate}%` : "—"}
+              icon="trending-up-outline"
+            />
+            <Stat
+              label="Waste rate"
+              value={stats?.resolved ? `${stats.wasteRate}%` : "—"}
+              icon="stats-chart-outline"
+            />
+            <Stat
+              label="Other removals"
+              value={stats?.removed ?? 0}
+              icon="remove-circle-outline"
+            />
+          </View>
+          <View style={styles.noteRow}>
+            <Ionicons
+              name="information-circle-outline"
+              size={16}
+              color={PALETTE.slate}
+            />
+            <Text style={styles.noteText}>
+              Counts reflect recorded pantry events, not quantities consumed.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeading
+            icon="repeat-outline"
+            title="Purchase & usage patterns"
+            caption="The rhythms of your pantry habits"
+          />
+          <View style={styles.scopeRow}>
+            <Ionicons
+              name="calendar-outline"
+              size={13}
+              color={PALETTE.slateDark}
+            />
+            <Text style={styles.scopeText}>ALL-TIME HISTORY</Text>
+          </View>
+          <View style={styles.card}>
+            {(
+              [
+                [
+                  "Average days before use",
+                  timing?.averageDaysBeforeUse ?? "—",
+                ],
+                [
+                  "Average days before expiration",
+                  timing?.averageDaysBeforeExpiry ?? "—",
+                ],
+                [
+                  "Average days between additions",
+                  repurchase?.averageDaysBetween ?? "—",
+                ],
+                [
+                  "Typical days between additions",
+                  repurchase?.typicalDaysBetween ?? "—",
+                ],
+              ] as [string, string | number][]
+            ).map(([label, value], index) => (
+              <View
+                key={label}
+                style={[styles.detailRow, index > 0 && styles.rowDivider]}
+              >
+                <Text style={styles.detailLabel}>{label}</Text>
+                <Text style={styles.detailValue}>{value}</Text>
+              </View>
+            ))}
+            <View style={styles.cardNote}>
+              <Ionicons
+                name="information-circle-outline"
+                size={16}
+                color={PALETTE.slate}
+              />
+              <Text style={styles.noteText}>
+                Patterns use all-time history, regardless of the selected date
+                range.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <SectionHeading
+            icon="book-outline"
+            title={`Saved recipes (${matchingRecipes.length})`}
+            caption="Recipes in your collection that use this ingredient"
+          />
+          <View style={styles.card}>
+            {matchingRecipes.length === 0 ? (
+              <View style={styles.emptyRow}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="bookmark-outline"
+                    size={22}
+                    color={PALETTE.slate}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>No matching saved recipes</Text>
+                <Text style={styles.emptyText}>
+                  No saved recipes containing this ingredient yet.
+                </Text>
+              </View>
+            ) : (
+              matchingRecipes.map((recipe, index) => (
+                <View
+                  key={recipe.title}
+                  style={[styles.recipeRow, index > 0 && styles.rowDivider]}
+                >
+                  {recipe.image?.url ? (
+                    <Image
+                      source={{ uri: recipe.image.url }}
+                      style={styles.recipeImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[styles.recipeImage, styles.recipePlaceholder]}
+                    >
+                      <Ionicons
+                        name="restaurant-outline"
+                        size={23}
+                        color={PALETTE.slate}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.recipeInfo}>
+                    <Text style={styles.recipeTitle}>{recipe.title}</Text>
+                    <Text style={styles.muted}>
+                      {recipe.ingredients.length} ingredients
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+        <Text style={styles.footer}>KITCHENBUDDY · INGREDIENT JOURNAL</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F7F7F7" },
-  content: { padding: 20, paddingBottom: 48 },
+  container: { flex: 1, backgroundColor: PALETTE.background },
+  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 56 },
   hero: {
+    backgroundColor: PALETTE.slateDark,
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 28,
+  },
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 17,
+  },
+  eyebrow: {
+    fontSize: 10,
+    letterSpacing: 1.8,
+    color: "#E4E8E6",
+    fontWeight: "700",
+  },
+  heroMark: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: PALETTE.heroText,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroBody: { flexDirection: "row", gap: 15, alignItems: "center" },
+  heroImage: {
+    width: 103,
+    height: 113,
+    borderRadius: 16,
+    backgroundColor: PALETTE.cream,
+  },
+  heroPlaceholder: { alignItems: "center", justifyContent: "center" },
+  heroInfo: { flex: 1, minWidth: 0 },
+  heroTitle: {
+    fontFamily: "serif",
+    fontSize: 27,
+    lineHeight: 32,
+    color: PALETTE.heroText,
+    fontWeight: "600",
+  },
+  heroCategory: { color: "#E7E9E5", fontSize: 12, marginTop: 6 },
+  heroStatus: {
+    marginTop: 11,
+    flexDirection: "row",
+    gap: 5,
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  heroStatusText: {
+    color: PALETTE.heroText,
+    fontSize: 10,
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  section: { marginBottom: 25 },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 10,
+  },
+  sectionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: PALETTE.taupe,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionHeadingText: { flex: 1 },
+  sectionTitle: {
+    fontFamily: "serif",
+    fontSize: 21,
+    lineHeight: 25,
+    fontWeight: "600",
+    color: PALETTE.ink,
+  },
+  sectionCaption: {
+    fontSize: 11,
+    color: PALETTE.muted,
+    marginTop: 3,
+    lineHeight: 16,
+  },
+  card: {
+    backgroundColor: PALETTE.paper,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    padding: 15,
+  },
+  stateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 17,
+  },
+  inventoryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 11,
+  },
+  rowDivider: { borderTopWidth: 1, borderTopColor: PALETTE.line },
+  inventoryIcon: {
+    width: 35,
+    height: 35,
+    borderRadius: 11,
+    backgroundColor: PALETTE.cream,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inventoryInfo: { flex: 1 },
+  inventoryName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: PALETTE.ink,
+    marginBottom: 4,
+  },
+  muted: { fontSize: 12, color: PALETTE.muted, lineHeight: 18 },
+  emptyRow: {
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+  },
+  emptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: PALETTE.cream,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: PALETTE.ink,
+    textAlign: "center",
+  },
+  emptyText: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 18,
+    color: PALETTE.muted,
+    textAlign: "center",
+  },
+  rangeRow: {
+    flexDirection: "row",
+    backgroundColor: PALETTE.taupe,
+    padding: 4,
+    borderRadius: 14,
+    gap: 3,
+    marginBottom: 13,
+  },
+  rangeButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 39,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  rangeSelected: { backgroundColor: PALETTE.paper },
+  rangeText: { fontSize: 11, color: PALETTE.muted, fontWeight: "600" },
+  rangeTextSelected: { color: PALETTE.slateDark, fontWeight: "800" },
+  pressed: { opacity: 0.76 },
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  stat: {
+    width: "48%",
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 114,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    backgroundColor: PALETTE.paper,
+    padding: 14,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  statValue: {
+    fontFamily: "serif",
+    fontWeight: "600",
+    fontSize: 28,
+    color: PALETTE.ink,
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: PALETTE.muted,
+    marginTop: 3,
+  },
+  noteRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-start",
+    marginTop: 11,
+    paddingHorizontal: 4,
+  },
+  noteText: { flex: 1, color: PALETTE.muted, lineHeight: 17, fontSize: 11 },
+  scopeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: PALETTE.cream,
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 11,
+  },
+  scopeText: {
+    fontSize: 10,
+    letterSpacing: 0.7,
+    color: PALETTE.slateDark,
+    fontWeight: "800",
+  },
+  detailRow: {
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-    marginBottom: 28,
-  },
-  heroImage: { width: 110, height: 110, borderRadius: 16 },
-  imagePlaceholder: {
-    backgroundColor: "#EAEDE8",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imageIcon: { fontSize: 42 },
-  heroInfo: { flex: 1 },
-  title: { fontSize: 26, fontWeight: "700", color: "#171717" },
-  subtitle: {
-    color: "#777",
-    fontSize: 14,
-    marginTop: 5,
-    textTransform: "capitalize",
-  },
-  status: { fontSize: 13, color: "#3D7850", marginTop: 10 },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#171717",
-    marginBottom: 12,
-  },
-  card: {
-    backgroundColor: "white",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 24,
-  },
-  inventoryRow: {
-    paddingVertical: 8,
-    borderBottomColor: "#EEE",
-    borderBottomWidth: 1,
-  },
-  inventoryName: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#222",
-    marginBottom: 3,
-  },
-  muted: { color: "#777", fontSize: 13 },
-  rangeRow: { flexDirection: "row", gap: 6, marginBottom: 12 },
-  rangeButton: {
-    flex: 1,
-    paddingVertical: 11,
-    paddingHorizontal: 3,
-    backgroundColor: "white",
-    borderRadius: 9,
-    alignItems: "center",
-  },
-  rangeSelected: { backgroundColor: "#171717" },
-  rangeText: { color: "#666", fontSize: 11, fontWeight: "600" },
-  rangeTextSelected: { color: "white" },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  stat: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 14,
-    width: "48%",
-    minHeight: 95,
-    justifyContent: "center",
-  },
-  statValue: { fontSize: 24, fontWeight: "700", color: "#171717" },
-  statLabel: { color: "#777", fontSize: 12, marginTop: 5 },
-  note: {
-    color: "#888",
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4,
-    marginBottom: 24,
-  },
-  detailRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 10,
   },
-  detailValue: { color: "#171717", fontWeight: "700" },
+  detailLabel: { fontSize: 12, lineHeight: 18, color: PALETTE.muted, flex: 1 },
+  detailValue: {
+    fontFamily: "serif",
+    fontSize: 19,
+    fontWeight: "600",
+    color: PALETTE.ink,
+    textAlign: "right",
+  },
+  cardNote: {
+    marginTop: 8,
+    paddingTop: 13,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.line,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
   recipeRow: {
     flexDirection: "row",
     alignItems: "center",
+    paddingVertical: 10,
     gap: 12,
-    paddingVertical: 9,
   },
-  recipeImage: { width: 65, height: 65, borderRadius: 10 },
+  recipeImage: {
+    width: 65,
+    height: 65,
+    borderRadius: 11,
+    backgroundColor: PALETTE.cream,
+  },
+  recipePlaceholder: { alignItems: "center", justifyContent: "center" },
   recipeInfo: { flex: 1 },
   recipeTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#222",
-    marginBottom: 5,
+    color: PALETTE.ink,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  footer: {
+    fontSize: 10,
+    color: "#A09D97",
+    textAlign: "center",
+    letterSpacing: 1.2,
+    marginTop: 2,
   },
 });

@@ -10,112 +10,119 @@ import {
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { Colors, Spacing } from "@/constants/theme";
-
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+// Matches the ivory / slate-blue / taupe KitchenBuddy Grocery and Settings redesign.
+const C = {
+  background: "#F6F3EE",
+  paper: "#FFFEFB",
+  row: "#F2F0EC",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDark: "#485F6A",
+  ivory: "#F8F4ED",
+  taupe: "#E8E2DA",
+  border: "#E9E5DE",
+  cream: "#EDE6DA",
+};
 
 export default function AboutScreen() {
   const router = useRouter();
+
   return (
     <>
       <Stack.Screen
         options={{
           title: "About",
           headerBackTitle: "Settings",
+          headerStyle: { backgroundColor: C.background },
+          headerTintColor: C.ink,
+          headerTitleStyle: { fontWeight: "600" },
+          headerShadowVisible: false,
         }}
       />
-
       <View style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* App header */}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.hero}>
-            <View style={styles.logo}>
-              <Ionicons
-                name="restaurant-outline"
-                size={38}
-                color={Colors.primary}
-              />
-            </View>
-
-            <Text style={styles.appName}>KitchenBuddy</Text>
-
-            <Text style={styles.version}>Version 0.1</Text>
-
-            <Text style={styles.tagline}>
-              A smarter way to keep track of your food.
-            </Text>
-          </View>
-
-          {/* About */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>About KitchenBuddy</Text>
-
-            <View style={styles.card}>
-              <View style={styles.aboutContent}>
-                <Text style={styles.aboutText}>
-                  KitchenBuddy helps you keep track of the food you already
-                  have, reduce waste, and make better use of your groceries.
-                </Text>
-
-                <Text style={styles.aboutText}>
-                  Scan grocery receipts to add food to your pantry, keep track
-                  of expiration dates, receive reminders, and discover recipe
-                  ideas using the ingredients you have available.
-                </Text>
-
-                <Text style={styles.aboutText}>
-                  KitchenBuddy is still being developed and will continue
-                  improving as new features are added.
-                </Text>
+            <View style={styles.heroTop}>
+              <View style={styles.logo}>
+                <Ionicons name="restaurant-outline" size={29} color={C.slate} />
+              </View>
+              <View style={styles.versionPill}>
+                <Text style={styles.versionPillText}>VERSION 0.1</Text>
               </View>
             </View>
+            <Text style={styles.heroEyebrow}>A LITTLE MORE ABOUT US</Text>
+            <Text style={styles.appName}>KitchenBuddy.</Text>
+            <Text style={styles.tagline}>
+              A smarter, simpler way to care for the food in your kitchen.
+            </Text>
+            <View style={styles.heroBottom}>
+              <Ionicons name="leaf-outline" size={17} color={C.cream} />
+              <Text style={styles.heroBottomText}>
+                Less waste. More good food.
+              </Text>
+            </View>
           </View>
 
-          {/* Features */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>What KitchenBuddy Does</Text>
+            <Text style={styles.sectionEyebrow}>OUR PURPOSE</Text>
+            <Text style={styles.sectionTitle}>A little help, every day.</Text>
+            <View style={styles.card}>
+              <Text style={styles.aboutText}>
+                KitchenBuddy helps you keep track of the food you already have,
+                reduce waste, and make better use of your groceries.
+              </Text>
+              <Text style={styles.aboutText}>
+                Scan grocery receipts to add food to your pantry, keep track of
+                expiration dates, receive reminders, and discover recipe ideas
+                using the ingredients you have available.
+              </Text>
+              <Text style={[styles.aboutText, styles.lastParagraph]}>
+                KitchenBuddy is still being developed and will continue
+                improving as new features are added.
+              </Text>
+            </View>
+          </View>
 
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>THE EVERYDAY ESSENTIALS</Text>
+            <Text style={styles.sectionTitle}>What KitchenBuddy does</Text>
             <View style={styles.card}>
               <FeatureRow
                 icon="scan-outline"
                 title="Receipt Scanning"
                 description="Turn grocery receipts into pantry items."
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <FeatureRow
                 icon="basket-outline"
                 title="Smart Pantry"
                 description="Keep your groceries organized in one place."
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <FeatureRow
                 icon="calendar-outline"
                 title="Expiration Tracking"
                 description="Keep track of food before it goes bad."
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <FeatureRow
                 icon="notifications-outline"
                 title="Expiry Reminders"
                 description="Get reminders when food is approaching its expiration date."
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <FeatureRow
                 icon="restaurant-outline"
                 title="Recipe Ideas"
                 description="Find ways to use food already in your pantry."
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <FeatureRow
                 icon="sparkles-outline"
                 title="Smart Recognition"
@@ -124,10 +131,9 @@ export default function AboutScreen() {
             </View>
           </View>
 
-          {/* Important information */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Important Information</Text>
-
+            <Text style={styles.sectionEyebrow}>GOOD TO KNOW</Text>
+            <Text style={styles.sectionTitle}>Important information</Text>
             <View style={styles.card}>
               <InfoRow
                 icon="shield-checkmark-outline"
@@ -135,27 +141,21 @@ export default function AboutScreen() {
                 subtitle="Learn how KitchenBuddy handles your data"
                 onPress={() => router.push("/settings/privacy-policy")}
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <InfoRow
                 icon="document-text-outline"
                 title="Terms of Use"
                 subtitle="Terms for using KitchenBuddy"
                 onPress={() => router.push("/settings/terms-of-use")}
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <InfoRow
                 icon="information-circle-outline"
                 title="Food & Expiration Information"
                 subtitle="About KitchenBuddy's food estimates"
                 onPress={() => router.push("/settings/food-expiration-info")}
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <InfoRow
                 icon="sparkles-outline"
                 title="AI & Automated Results"
@@ -165,10 +165,9 @@ export default function AboutScreen() {
             </View>
           </View>
 
-          {/* Support */}
           <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>WE'RE HERE TO HELP</Text>
             <Text style={styles.sectionTitle}>Support</Text>
-
             <View style={styles.card}>
               <InfoRow
                 icon="mail-outline"
@@ -176,18 +175,14 @@ export default function AboutScreen() {
                 subtitle="Get in touch with KitchenBuddy"
                 onPress={() => router.push("/settings/contact-support")}
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <InfoRow
                 icon="chatbubble-ellipses-outline"
                 title="Send Feedback"
                 subtitle="Help make KitchenBuddy better"
                 onPress={() => router.push("/settings/send-feedback")}
               />
-
-              <View style={styles.divider} />
-
+              <Divider />
               <InfoRow
                 icon="heart-outline"
                 title="Acknowledgements"
@@ -202,27 +197,19 @@ export default function AboutScreen() {
             </View>
           </View>
 
-          {/* Development status */}
           <View style={styles.developmentCard}>
-            <Ionicons
-              name="construct-outline"
-              size={22}
-              color={Colors.primary}
-            />
-
+            <View style={styles.developmentIcon}>
+              <Ionicons name="construct-outline" size={20} color={C.slate} />
+            </View>
             <View style={styles.developmentText}>
-              <Text style={styles.developmentTitle}>
-                KitchenBuddy is in development
-              </Text>
-
+              <Text style={styles.developmentTitle}>Growing with you</Text>
               <Text style={styles.developmentDescription}>
-                Features, appearance, and functionality may change as the app
-                continues to improve.
+                KitchenBuddy is in development. Features, appearance, and
+                functionality may change as the app continues to improve.
               </Text>
             </View>
           </View>
-
-          <Text style={styles.footer}>KitchenBuddy v0.1</Text>
+          <Text style={styles.footer}>Made with care · KitchenBuddy v0.1</Text>
         </ScrollView>
       </View>
     </>
@@ -235,13 +222,16 @@ type FeatureRowProps = {
   description: string;
 };
 
+function Divider() {
+  return <View style={styles.divider} />;
+}
+
 function FeatureRow({ icon, title, description }: FeatureRowProps) {
   return (
     <View style={styles.row}>
       <View style={styles.rowIcon}>
-        <Ionicons name={icon} size={21} color={Colors.primary} />
+        <Ionicons name={icon} size={20} color={C.slate} />
       </View>
-
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{description}</Text>
@@ -250,186 +240,183 @@ function FeatureRow({ icon, title, description }: FeatureRowProps) {
   );
 }
 
-type InfoRowProps = {
-  icon: IoniconName;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-};
+type InfoRowProps = FeatureRowProps & { onPress: () => void; subtitle: string };
 
-function InfoRow({ icon, title, subtitle, onPress }: InfoRowProps) {
+function InfoRow({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: Omit<InfoRowProps, "description">) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={onPress}
     >
       <View style={styles.rowIcon}>
-        <Ionicons name={icon} size={21} color={Colors.primary} />
+        <Ionicons name={icon} size={20} color={C.slate} />
       </View>
-
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
       </View>
-
-      <Ionicons name="chevron-forward" size={18} color="#888" />
+      <Ionicons name="chevron-forward" size={17} color={C.muted} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#fafafa",
-  },
-
-  content: {
-    padding: 16,
-    paddingBottom: 50,
-  },
-
+  screen: { flex: 1, backgroundColor: C.background },
+  content: { paddingHorizontal: 19, paddingTop: 12, paddingBottom: 55 },
   hero: {
-    alignItems: "center",
-    paddingTop: 12,
-    paddingBottom: 26,
-  },
-
-  logo: {
-    width: 76,
-    height: 76,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(80, 140, 90, 0.10)",
-    marginBottom: 14,
-  },
-
-  appName: {
-    fontSize: 27,
-    fontWeight: "700",
-    color: "#222",
-  },
-
-  version: {
-    fontSize: 13,
-    color: "#888",
-    marginTop: 4,
-  },
-
-  tagline: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 10,
-  },
-
-  section: {
-    marginBottom: 22,
-  },
-
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#555",
-    marginLeft: 4,
-    marginBottom: 8,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#ddd",
+    backgroundColor: C.slate,
+    borderRadius: 27,
+    paddingHorizontal: 25,
+    paddingTop: 22,
+    paddingBottom: 23,
+    marginBottom: 32,
     overflow: "hidden",
   },
-
-  aboutContent: {
-    padding: 16,
-  },
-
-  aboutText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#555",
-    marginBottom: 12,
-  },
-
-  row: {
-    minHeight: 68,
+  heroTop: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 28,
   },
-
-  rowPressed: {
-    backgroundColor: "rgba(0,0,0,0.025)",
-  },
-
-  rowIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+  logo: {
+    width: 57,
+    height: 57,
+    backgroundColor: C.ivory,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(80, 140, 90, 0.08)",
-    marginRight: 12,
   },
-
-  rowText: {
-    flex: 1,
-    paddingRight: 8,
+  versionPill: {
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderRadius: 30,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#222",
-    marginBottom: 3,
+  versionPillText: {
+    color: C.ivory,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.3,
   },
-
-  rowSubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: "#777",
+  heroEyebrow: {
+    color: C.cream,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 2,
+    marginBottom: 8,
   },
-
+  appName: {
+    color: C.paper,
+    fontSize: 38,
+    lineHeight: 45,
+    fontFamily: "serif",
+    marginBottom: 8,
+  },
+  tagline: { color: "#F0EFEB", fontSize: 15, lineHeight: 23, maxWidth: 275 },
+  heroBottom: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.19)",
+    paddingTop: 16,
+    marginTop: 24,
+  },
+  heroBottomText: { color: C.cream, fontSize: 12, letterSpacing: 0.3 },
+  section: { marginBottom: 29 },
+  sectionEyebrow: {
+    color: C.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.8,
+    marginLeft: 4,
+    marginBottom: 6,
+  },
+  sectionTitle: {
+    color: C.ink,
+    fontSize: 27,
+    fontFamily: "serif",
+    marginLeft: 3,
+    marginBottom: 13,
+  },
+  card: {
+    backgroundColor: C.paper,
+    borderRadius: 23,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  aboutText: {
+    fontSize: 14,
+    lineHeight: 23,
+    color: "#585E5C",
+    marginHorizontal: 8,
+    marginTop: 9,
+    marginBottom: 9,
+  },
+  lastParagraph: { marginBottom: 12 },
+  row: {
+    minHeight: 73,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 11,
+  },
+  rowPressed: { backgroundColor: C.row, borderRadius: 14 },
+  rowIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 14,
+    backgroundColor: C.row,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 13,
+  },
+  rowText: { flex: 1, paddingRight: 7 },
+  rowTitle: { color: C.ink, fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  rowSubtitle: { color: C.muted, fontSize: 12, lineHeight: 18 },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: "#e5e5e5",
-    marginLeft: 64,
+    backgroundColor: C.border,
+    marginLeft: 65,
+    marginRight: 8,
   },
-
   developmentCard: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "rgba(80, 140, 90, 0.07)",
-    borderRadius: 16,
-    padding: 15,
-    marginBottom: 24,
+    backgroundColor: C.taupe,
+    borderRadius: 21,
+    padding: 18,
+    marginBottom: 28,
   },
-
-  developmentText: {
-    flex: 1,
-    marginLeft: 12,
+  developmentIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 13,
+    backgroundColor: C.paper,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
-
+  developmentText: { flex: 1 },
   developmentTitle: {
+    color: C.ink,
     fontSize: 14,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 4,
+    fontWeight: "800",
+    marginBottom: 5,
   },
-
-  developmentDescription: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: "#666",
-  },
-
+  developmentDescription: { color: "#666B68", fontSize: 12, lineHeight: 19 },
   footer: {
+    color: "#94918A",
     textAlign: "center",
-    color: "#aaa",
-    fontSize: 12,
+    fontSize: 11,
+    letterSpacing: 0.5,
   },
 });

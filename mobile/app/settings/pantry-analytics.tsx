@@ -1,5 +1,19 @@
 import React, { useCallback, useState } from "react";
 import { usePremium } from "@/context/PremiumContext";
+import { Ionicons } from "@expo/vector-icons";
+
+const C = {
+  background: "#F6F3EE",
+  paper: "#FFFEFB",
+  row: "#F2F0EC",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDark: "#485F6A",
+  taupe: "#E8E2DA",
+  border: "#E9E5DE",
+  cream: "#EDE6DA",
+};
 import {
   Pressable,
   SafeAreaView,
@@ -39,7 +53,7 @@ const RANGES: { key: AnalyticsRange; label: string }[] = [
 ];
 function formatCategory(key: string): string {
   return key
-    .replace(/[\_-]/g, " ")
+    .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 function EmptyMessage({ message }: { message: string }) {
@@ -118,6 +132,9 @@ function PantryAnalyticsContent() {
         options={{
           title: "Pantry Analytics",
           headerBackTitle: "Back",
+          headerStyle: { backgroundColor: C.background },
+          headerTintColor: C.ink,
+          headerShadowVisible: false,
         }}
       />
       <ScrollView
@@ -126,12 +143,31 @@ function PantryAnalyticsContent() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>Pantry Analytics</Text>
-          <Text style={styles.subtitle}>
-            Understand your food habits and reduce waste.
+        <View style={styles.hero}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons name="analytics-outline" size={27} color={C.slate} />
+            </View>
+            <View style={styles.heroPill}>
+              <Text style={styles.heroPillText}>YOUR KITCHEN, IN FOCUS</Text>
+            </View>
+          </View>
+          <Text style={styles.heroEyebrow}>KITCHENBUDDY INSIGHTS</Text>
+          <Text style={styles.heroTitle}>
+            A clearer picture of your pantry.
           </Text>
+          <Text style={styles.heroSubtitle}>
+            Understand your food habits, celebrate what you use, and find ways
+            to waste less.
+          </Text>
+          <View style={styles.heroBottom}>
+            <Ionicons name="leaf-outline" size={16} color={C.cream} />
+            <Text style={styles.heroBottomText}>
+              Thoughtful insights from the food you track.
+            </Text>
+          </View>
         </View>
+        <Text style={styles.selectorLabel}>EXPLORE YOUR INSIGHTS</Text>
         {/* MAIN TABS */}
         <View style={styles.tabSelector}>
           {TABS.map((item) => (
@@ -156,6 +192,7 @@ function PantryAnalyticsContent() {
           ))}
         </View>
         {/* DATE RANGE */}
+        <Text style={styles.selectorLabel}>TIME PERIOD</Text>
         <View style={styles.rangeSelector}>
           {RANGES.map((item) => (
             <Pressable
@@ -179,14 +216,20 @@ function PantryAnalyticsContent() {
           ))}
         </View>
         {loading ? (
-          <Text style={styles.loadingText}>Loading pantry analytics...</Text>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color={C.slate} />
+            <Text style={styles.loadingText}>Loading pantry analytics...</Text>
+          </View>
         ) : (
           <>
             {/* ================= OVERVIEW ================= */}
             {tab === "overview" && (
               <>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Overview</Text>
+                  <Text style={styles.sectionEyebrow}>THE BIG PICTURE</Text>
+                  <Text style={styles.sectionTitle}>
+                    Your pantry at a glance.
+                  </Text>
                   <View style={styles.statsRow}>
                     <View style={styles.statCard}>
                       <Text style={styles.statValue}>
@@ -223,7 +266,8 @@ function PantryAnalyticsContent() {
                   </View>
                 </View>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Monthly Trends</Text>
+                  <Text style={styles.sectionEyebrow}>MONTH BY MONTH</Text>
+                  <Text style={styles.sectionTitle}>Monthly trends.</Text>
                   <Text style={styles.sectionSubtitle}>
                     Food utilization by calendar month.
                   </Text>
@@ -263,7 +307,8 @@ function PantryAnalyticsContent() {
             {tab === "foods" && (
               <>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Food Rankings</Text>
+                  <Text style={styles.sectionEyebrow}>WHAT YOU REACH FOR</Text>
+                  <Text style={styles.sectionTitle}>Food rankings.</Text>
                   <Text style={styles.sectionSubtitle}>
                     Your most used and most expired foods.
                   </Text>
@@ -317,7 +362,8 @@ function PantryAnalyticsContent() {
                   </View>
                 </View>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Category Analytics</Text>
+                  <Text style={styles.sectionEyebrow}>CATEGORY BREAKDOWN</Text>
+                  <Text style={styles.sectionTitle}>Category analytics.</Text>
                   <Text style={styles.sectionSubtitle}>
                     See which food categories you use most efficiently.
                   </Text>
@@ -362,7 +408,8 @@ function PantryAnalyticsContent() {
             {tab === "habits" && (
               <>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Purchase Habits</Text>
+                  <Text style={styles.sectionEyebrow}>YOUR ROUTINE</Text>
+                  <Text style={styles.sectionTitle}>Purchase habits.</Text>
                   <Text style={styles.sectionSubtitle}>
                     Learn how often you bring foods into your pantry.
                   </Text>
@@ -408,7 +455,10 @@ function PantryAnalyticsContent() {
                   )}
                 </View>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Food Usage Timing</Text>
+                  <Text style={styles.sectionEyebrow}>
+                    FROM SHOPPING TO TABLE
+                  </Text>
+                  <Text style={styles.sectionTitle}>Food usage timing.</Text>
                   <Text style={styles.sectionSubtitle}>
                     Average time foods spend in your pantry before use.
                   </Text>
@@ -448,7 +498,10 @@ function PantryAnalyticsContent() {
                   )}
                 </View>
                 <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>KitchenBuddy Insights</Text>
+                  <Text style={styles.sectionEyebrow}>A LITTLE GUIDANCE</Text>
+                  <Text style={styles.sectionTitle}>
+                    KitchenBuddy insights.
+                  </Text>
                   <Text style={styles.sectionSubtitle}>
                     Recommendations based on your tracked food habits.
                   </Text>
@@ -490,212 +543,309 @@ export default function PantryAnalyticsScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <Stack.Screen options={{ title: "Pantry Analytics" }} />
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
+        <Stack.Screen
+          options={{
+            title: "Pantry Analytics",
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.ink,
+            headerShadowVisible: false,
           }}
-        >
-          <ActivityIndicator size="large" />
+        />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={C.slate} />
+          <Text style={styles.loadingText}>Checking your access...</Text>
         </View>
       </SafeAreaView>
     );
   }
-
   if (!isPremium) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <Stack.Screen options={{ title: "Premium Feature" }} />
-
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 28,
-            gap: 14,
+        <Stack.Screen
+          options={{
+            title: "Pantry Analytics",
+            headerStyle: { backgroundColor: C.background },
+            headerTintColor: C.ink,
+            headerShadowVisible: false,
           }}
+        />
+        <ScrollView
+          contentContainerStyle={styles.premiumContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={{ fontSize: 42 }}>🔒</Text>
-
-          <Text style={styles.title}>Pantry Analytics</Text>
-
-          <Text style={[styles.subtitle, { textAlign: "center" }]}>
-            Unlock food usage trends, waste tracking, purchase habits, and
-            personalized insights with KitchenBuddy Premium.
-          </Text>
+          <View style={styles.premiumHero}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIcon}>
+                <Ionicons name="analytics-outline" size={28} color={C.slate} />
+              </View>
+              <View style={styles.heroPill}>
+                <Text style={styles.heroPillText}>KITCHENBUDDY PREMIUM</Text>
+              </View>
+            </View>
+            <Text style={styles.heroEyebrow}>MORE INSIGHT, LESS WASTE</Text>
+            <Text style={styles.heroTitle}>
+              Get to know your kitchen better.
+            </Text>
+            <Text style={styles.heroSubtitle}>
+              Unlock food usage trends, waste tracking, purchase habits, and
+              personalized insights with KitchenBuddy Premium.
+            </Text>
+          </View>
+          <View style={styles.premiumFeatureCard}>
+            <View style={styles.premiumFeatureRow}>
+              <Ionicons name="stats-chart-outline" size={21} color={C.slate} />
+              <Text style={styles.premiumFeatureText}>
+                Your food usage and waste trends
+              </Text>
+            </View>
+            <View style={styles.premiumDivider} />
+            <View style={styles.premiumFeatureRow}>
+              <Ionicons name="basket-outline" size={21} color={C.slate} />
+              <Text style={styles.premiumFeatureText}>
+                Purchase habits and food rankings
+              </Text>
+            </View>
+            <View style={styles.premiumDivider} />
+            <View style={styles.premiumFeatureRow}>
+              <Ionicons name="sparkles-outline" size={21} color={C.slate} />
+              <Text style={styles.premiumFeatureText}>
+                Insights based on your pantry history
+              </Text>
+            </View>
+          </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Unlock KitchenBuddy Premium"
             onPress={() => router.push("/settings/premium")}
-            style={{
-              backgroundColor: "#171717",
-              paddingVertical: 15,
-              paddingHorizontal: 28,
-              borderRadius: 12,
-              marginTop: 12,
-              minWidth: 220,
-              alignItems: "center",
-            }}
+            style={({ pressed }) => [
+              styles.premiumButton,
+              pressed && { opacity: 0.85 },
+            ]}
           >
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontSize: 16,
-                fontWeight: "700",
-              }}
-            >
-              Unlock Premium
-            </Text>
+            <Text style={styles.premiumButtonText}>Explore Premium</Text>
+            <Ionicons name="arrow-forward" size={18} color={C.paper} />
           </Pressable>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
-
   return <PantryAnalyticsContent />;
 }
 const styles = StyleSheet.create({
-  safeArea: {
+  safeArea: { flex: 1, backgroundColor: C.background },
+  container: { flex: 1 },
+  content: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 65 },
+  centered: {
     flex: 1,
-    backgroundColor: "#F7F7F7",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    padding: 28,
   },
-  container: {
-    flex: 1,
+  hero: {
+    backgroundColor: C.slate,
+    borderRadius: 27,
+    padding: 22,
+    marginBottom: 23,
   },
-  content: {
-    padding: 20,
-    paddingBottom: 48,
+  heroTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 26,
+    gap: 8,
   },
-  header: {
-    marginBottom: 20,
+  heroIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
+    backgroundColor: C.cream,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: "#171717",
+  heroPill: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 99,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    flexShrink: 1,
   },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 15,
-    lineHeight: 21,
-    color: "#6B6B6B",
+  heroPillText: {
+    color: C.cream,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+    textAlign: "center",
+  },
+  heroEyebrow: {
+    color: C.cream,
+    letterSpacing: 1.8,
+    fontSize: 10,
+    fontWeight: "800",
+    marginBottom: 9,
+  },
+  heroTitle: {
+    fontFamily: "serif",
+    fontSize: 32,
+    lineHeight: 39,
+    color: C.paper,
+    maxWidth: 330,
+  },
+  heroSubtitle: {
+    color: "#E9EAE6",
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 12,
+  },
+  heroBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.19)",
+    marginTop: 22,
+    paddingTop: 14,
+    gap: 9,
+  },
+  heroBottomText: { color: C.cream, fontSize: 12, lineHeight: 18, flex: 1 },
+  selectorLabel: {
+    color: C.slate,
+    letterSpacing: 1.6,
+    fontWeight: "800",
+    fontSize: 10,
+    marginBottom: 10,
+    marginLeft: 3,
   },
   tabSelector: {
     flexDirection: "row",
-    backgroundColor: "#EAEAEA",
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: 16,
+    backgroundColor: C.taupe,
+    borderRadius: 16,
+    padding: 5,
+    marginBottom: 19,
+    gap: 3,
   },
   tabButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 3,
+    minWidth: 0,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 9,
+    borderRadius: 12,
+    paddingHorizontal: 2,
   },
   tabButtonActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: C.paper,
+    shadowColor: C.ink,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 1,
   },
   tabText: {
+    color: C.muted,
     fontSize: 12,
-    fontWeight: "600",
-    color: "#777777",
-  },
-  tabTextActive: {
-    color: "#171717",
     fontWeight: "700",
+    textAlign: "center",
   },
-  rangeSelector: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 24,
-  },
+  tabTextActive: { color: C.slateDark, fontWeight: "800" },
+  rangeSelector: { flexDirection: "row", gap: 7, marginBottom: 27 },
   rangeButton: {
     flex: 1,
-    minHeight: 42,
-    alignItems: "center",
+    minWidth: 0,
+    minHeight: 40,
+    paddingHorizontal: 2,
+    borderRadius: 12,
+    backgroundColor: C.paper,
+    borderWidth: 1,
+    borderColor: C.border,
     justifyContent: "center",
-    paddingHorizontal: 3,
-    borderRadius: 10,
-    backgroundColor: "#FFFFFF",
+    alignItems: "center",
   },
-  rangeButtonActive: {
-    backgroundColor: "#171717",
-  },
+  rangeButtonActive: { backgroundColor: C.slate, borderColor: C.slate },
   rangeButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#666666",
+    fontSize: 11,
+    fontWeight: "700",
+    color: C.muted,
+    textAlign: "center",
   },
-  rangeButtonTextActive: {
-    color: "#FFFFFF",
-  },
-  section: {
-    marginBottom: 26,
+  rangeButtonTextActive: { color: C.paper },
+  section: { marginBottom: 25 },
+  sectionEyebrow: {
+    color: C.slate,
+    letterSpacing: 1.5,
+    fontWeight: "800",
+    fontSize: 10,
+    marginLeft: 2,
+    marginBottom: 7,
   },
   sectionTitle: {
-    fontSize: 21,
-    fontWeight: "700",
-    color: "#171717",
+    fontFamily: "serif",
+    fontSize: 25,
+    lineHeight: 31,
+    color: C.ink,
     marginBottom: 12,
   },
   sectionSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 20,
-    color: "#777777",
-    marginBottom: 14,
+    color: C.muted,
+    marginBottom: 13,
   },
   dataScope: {
-    fontSize: 12,
-    color: "#888888",
-    marginBottom: 10,
-    fontStyle: "italic",
+    fontSize: 11,
+    color: C.slateDark,
+    backgroundColor: C.taupe,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 99,
+    alignSelf: "flex-start",
+    overflow: "hidden",
+    marginBottom: 13,
+    fontWeight: "700",
   },
-  statsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
-  },
+  statsRow: { flexDirection: "row", gap: 9, marginBottom: 9 },
   statCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingVertical: 20,
-    paddingHorizontal: 8,
+    minWidth: 0,
+    minHeight: 111,
+    backgroundColor: C.paper,
+    borderRadius: 17,
+    paddingVertical: 18,
+    paddingHorizontal: 5,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 0,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  statValue: {
-    fontSize: 25,
-    fontWeight: "700",
-    color: "#171717",
-  },
+  statValue: { fontFamily: "serif", fontSize: 28, color: C.slateDark },
   statLabel: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#777777",
+    marginTop: 8,
+    fontSize: 11,
+    color: C.muted,
+    fontWeight: "600",
     textAlign: "center",
   },
-  loadingText: {
-    fontSize: 14,
-    color: "#777777",
+  loadingBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.paper,
+    borderColor: C.border,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 28,
+    gap: 10,
   },
+  loadingText: { fontSize: 13, color: C.muted, lineHeight: 19 },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: C.paper,
+    borderRadius: 19,
+    padding: 17,
+    marginBottom: 11,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   cardTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#171717",
+    fontSize: 16,
+    fontWeight: "800",
+    color: C.ink,
     marginBottom: 12,
   },
   trendRow: {
@@ -704,142 +854,155 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 16,
   },
-  trendMonth: {
-    width: 72,
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#555555",
-  },
+  trendMonth: { width: 68, fontSize: 12, fontWeight: "700", color: C.ink },
   barTrack: {
     flex: 1,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#EAEAEA",
+    height: 10,
+    borderRadius: 99,
+    backgroundColor: C.taupe,
     overflow: "hidden",
   },
-  barFill: {
-    height: "100%",
-    backgroundColor: "#4CAF50",
-    borderRadius: 6,
-  },
+  barFill: { height: "100%", backgroundColor: C.slate, borderRadius: 99 },
   trendPercent: {
-    width: 42,
+    width: 44,
     textAlign: "right",
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#171717",
-  },
-  footnote: {
+    color: C.slateDark,
     fontSize: 12,
-    lineHeight: 18,
-    color: "#888888",
-    marginTop: 6,
+    fontWeight: "800",
   },
+  footnote: { fontSize: 11, lineHeight: 18, color: C.muted, marginTop: 8 },
   emptyCard: {
-    padding: 24,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
     alignItems: "center",
+    gap: 10,
+    padding: 24,
+    backgroundColor: C.paper,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 20,
-    color: "#888888",
+    color: C.muted,
     textAlign: "center",
   },
   rankingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.border,
   },
   rankingName: {
     flex: 1,
-    fontSize: 14,
-    color: "#333333",
     marginRight: 12,
+    fontSize: 14,
+    color: C.ink,
+    fontWeight: "600",
   },
   rankingCount: {
+    color: C.slateDark,
     fontSize: 15,
-    fontWeight: "700",
-    color: "#171717",
+    fontWeight: "800",
+    overflow: "hidden",
+    backgroundColor: C.row,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 9,
   },
-  rowChevron: {
-    fontSize: 22,
-    color: "#AAAAAA",
-    marginLeft: 8,
-  },
+  rowChevron: { fontSize: 21, color: C.muted, marginLeft: 9 },
   categoryHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 13,
+    gap: 12,
   },
-  categoryPercent: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#171717",
-  },
-  categoryDetails: {
-    fontSize: 12,
-    color: "#777777",
-    marginTop: 10,
-  },
+  categoryPercent: { fontSize: 16, fontWeight: "800", color: C.slateDark },
+  categoryDetails: { color: C.muted, fontSize: 12, marginTop: 10 },
   habitRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-    gap: 12,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.border,
+    gap: 9,
   },
-  habitInfo: {
-    flex: 1,
-  },
-  habitName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333333",
-  },
-  habitDetails: {
-    fontSize: 12,
-    color: "#888888",
-    marginTop: 4,
-  },
+  habitInfo: { flex: 1, minWidth: 0 },
+  habitName: { fontSize: 14, fontWeight: "700", color: C.ink },
+  habitDetails: { fontSize: 11, color: C.muted, marginTop: 5 },
   habitValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#171717",
+    fontSize: 12,
+    fontWeight: "800",
+    color: C.slateDark,
     textAlign: "right",
-    maxWidth: 120,
+    maxWidth: 115,
   },
   insightCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: C.paper,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 19,
+    padding: 17,
+    marginBottom: 11,
   },
   insightHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 8,
+    marginBottom: 9,
   },
-  insightIcon: {
-    fontSize: 18,
+  insightIcon: { fontSize: 18, color: C.slateDark },
+  insightTitle: { flex: 1, fontSize: 15, fontWeight: "800", color: C.ink },
+  insightMessage: { fontSize: 13, lineHeight: 21, color: C.muted },
+  premiumContent: {
+    flexGrow: 1,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 45,
+    justifyContent: "center",
   },
-  insightTitle: {
+  premiumHero: {
+    backgroundColor: C.slate,
+    borderRadius: 27,
+    padding: 23,
+    marginBottom: 15,
+  },
+  premiumFeatureCard: {
+    backgroundColor: C.paper,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 19,
+    paddingHorizontal: 17,
+    marginBottom: 18,
+  },
+  premiumFeatureRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    gap: 13,
+  },
+  premiumFeatureText: {
+    color: C.ink,
+    fontSize: 13,
     flex: 1,
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#171717",
+    lineHeight: 20,
+    fontWeight: "600",
   },
-  insightMessage: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: "#666666",
+  premiumDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: C.border,
+    marginLeft: 34,
   },
+  premiumButton: {
+    backgroundColor: C.slate,
+    minHeight: 54,
+    borderRadius: 15,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 18,
+  },
+  premiumButtonText: { color: C.paper, fontSize: 15, fontWeight: "800" },
 });

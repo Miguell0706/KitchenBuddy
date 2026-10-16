@@ -4,20 +4,41 @@ import {
   Text,
   FlatList,
   ActivityIndicator,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-import { TextStyles, CardStyles, Layout } from "@/constants/styles";
-import { Colors, Spacing } from "@/constants/theme";
 import {
   getPantryHistory,
   type PantryHistoryAction,
   type PantryHistoryEntry,
 } from "@/features/pantry/history";
 
+// Shared visual language with the redesigned KitchenBuddy Settings screens.
+const PALETTE = {
+  ivory: "#F8F6F0",
+  paper: "#FFFEFB",
+  slate: "#586D77",
+  slateDark: "#405660",
+  slatePale: "#E8EEF0",
+  charcoal: "#30373B",
+  muted: "#768087",
+  taupe: "#AC9C89",
+  line: "#E8E3DA",
+  soft: "#F1EEE7",
+  white: "#FFFFFF",
+};
+
 type Filter = "all" | PantryHistoryAction;
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "added", label: "Added" },
+  { key: "used", label: "Used" },
+  { key: "expired", label: "Expired" },
+  { key: "removed", label: "Removed" },
+];
 
 export default function PantryHistoryScreen() {
   const [entries, setEntries] = useState<PantryHistoryEntry[]>([]);
@@ -25,12 +46,11 @@ export default function PantryHistoryScreen() {
   const [filter, setFilter] = useState<Filter>("all");
 
   useEffect(() => {
-    loadHistory();
+    void loadHistory();
   }, []);
 
   async function loadHistory() {
     setLoading(true);
-
     try {
       const data = await getPantryHistory();
       setEntries(data);
@@ -41,154 +61,152 @@ export default function PantryHistoryScreen() {
 
   const filtered = useMemo(() => {
     if (filter === "all") return entries;
-
     if (filter === "added") {
       return entries.filter(
         (entry) => entry.action === "added" || entry.action === "purchased",
       );
     }
-
     return entries.filter((entry) => entry.action === filter);
   }, [entries, filter]);
-  if (loading) {
-    return (
-      <View style={styles.screen}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <View style={styles.headerText}>
-          <Text style={TextStyles.sectionTitle}>Pantry history</Text>
+      <FlatList
+        data={loading ? [] : filtered}
+        keyExtractor={(item) => item.entryId}
+        renderItem={({ item }) => <HistoryRow entry={item} />}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <>
+            <View style={styles.hero}>
+              <View style={styles.eyebrowRow}>
+                <Ionicons name="time-outline" size={15} color="#F0E7DB" />
+                <Text style={styles.eyebrow}>YOUR PANTRY JOURNAL</Text>
+              </View>
+              <Text style={styles.heroTitle}>
+                A little history, a lot of insight.
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                See how groceries have moved through your kitchen, one item at a
+                time.
+              </Text>
+              <View style={styles.heroBottom}>
+                <View style={styles.heroCountIcon}>
+                  <Ionicons name="receipt-outline" size={17} color="#F8F6F0" />
+                </View>
+                <Text style={styles.heroCount}>
+                  {loading
+                    ? "Loading your activity"
+                    : `${entries.length} recorded ${entries.length === 1 ? "event" : "events"}`}
+                </Text>
+              </View>
+            </View>
 
-          <Text style={TextStyles.small}>
-            See how items have moved through your pantry.
-          </Text>
-        </View>
-      </View>
-
-      {/* Filters */}
-      <View style={styles.filterRow}>
-        <FilterChip
-          label="All"
-          active={filter === "all"}
-          onPress={() => setFilter("all")}
-        />
-
-        <FilterChip
-          label="Added"
-          active={filter === "added" || filter === "purchased"}
-          onPress={() => setFilter("added")}
-        />
-
-        <FilterChip
-          label="Used"
-          active={filter === "used"}
-          onPress={() => setFilter("used")}
-        />
-
-        <FilterChip
-          label="Expired"
-          active={filter === "expired"}
-          onPress={() => setFilter("expired")}
-        />
-
-        <FilterChip
-          label="Removed"
-          active={filter === "removed"}
-          onPress={() => setFilter("removed")}
-        />
-      </View>
-
-      {/* Empty state / history */}
-      {filtered.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Ionicons
-            name="time-outline"
-            size={36}
-            color="rgba(120,120,120,0.6)"
-          />
-
-          <Text style={[TextStyles.body, { marginTop: Spacing.sm }]}>
-            No history yet
-          </Text>
-
-          <Text style={TextStyles.small}>
-            Pantry activity will appear here as you use KitchenBuddy.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.entryId}
-          contentContainerStyle={{
-            paddingTop: Spacing.sm,
-            paddingBottom: Spacing.xl,
-          }}
-          renderItem={({ item }) => <HistoryRow entry={item} />}
-        />
-      )}
+            <View style={styles.sectionHeading}>
+              <View>
+                <Text style={styles.sectionEyebrow}>YOUR ACTIVITY</Text>
+                <Text style={styles.sectionTitle}>Pantry history</Text>
+              </View>
+              <Ionicons name="layers-outline" size={22} color={PALETTE.taupe} />
+            </View>
+            <View style={styles.filterRow}>
+              {FILTERS.map((option) => (
+                <FilterChip
+                  key={option.key}
+                  label={option.label}
+                  active={
+                    filter === option.key ||
+                    (option.key === "added" && filter === "purchased")
+                  }
+                  onPress={() => setFilter(option.key)}
+                />
+              ))}
+            </View>
+            {!loading && filtered.length > 0 && (
+              <Text style={styles.resultsLabel}>
+                {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
+                {filter === "all"
+                  ? ""
+                  : ` · ${filter === "added" ? "Added & purchased" : (FILTERS.find((option) => option.key === filter)?.label ?? filter)}`}
+              </Text>
+            )}
+          </>
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator color={PALETTE.slate} />
+              <Text style={styles.emptyDescription}>
+                Loading pantry history...
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="time-outline" size={27} color={PALETTE.slate} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {filter === "all"
+                  ? "Your story starts here"
+                  : "Nothing in this category yet"}
+              </Text>
+              <Text style={styles.emptyDescription}>
+                {filter === "all"
+                  ? "As you add, use, or remove pantry items, their activity will appear here."
+                  : "Try another filter to see more of your pantry activity."}
+              </Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          !loading && filtered.length > 0 ? (
+            <Text style={styles.footer}>
+              A thoughtful record of your everyday kitchen.
+            </Text>
+          ) : null
+        }
+      />
     </View>
   );
 }
-
-/* ────────────── Row ────────────── */
 
 function HistoryRow({ entry }: { entry: PantryHistoryEntry }) {
   const appearance = getActionAppearance(entry.action);
-
   const subtitleParts: string[] = [];
-
-  if (entry.quantity) {
-    subtitleParts.push(entry.quantity);
-  }
-
-  if (entry.categoryKey) {
-    subtitleParts.push(formatCategory(entry.categoryKey));
-  }
-
+  if (entry.quantity) subtitleParts.push(entry.quantity);
+  if (entry.categoryKey) subtitleParts.push(formatCategory(entry.categoryKey));
   if (entry.action === "purchased" && entry.source === "receipt") {
     subtitleParts.push("Receipt");
   }
-
-  const subtitle = subtitleParts.join(" • ");
+  const subtitle = subtitleParts.join(" · ");
 
   return (
-    <View style={[CardStyles.subtle, styles.rowCard]}>
-      <View style={Layout.rowBetween}>
-        <View style={styles.rowLeft}>
-          <Text style={TextStyles.body} numberOfLines={1}>
-            {entry.name}
-          </Text>
-
-          <Text style={TextStyles.small} numberOfLines={1}>
-            {subtitle || "Pantry item"}
-          </Text>
-        </View>
-
-        <View style={styles.rowRight}>
-          <View
-            style={[styles.badge, { backgroundColor: appearance.background }]}
-          >
-            <Text style={[TextStyles.small, { color: appearance.color }]}>
-              {appearance.label}
-            </Text>
-          </View>
-
-          <Text style={[TextStyles.small, styles.timeText]}>
-            {timeAgo(entry.at)}
-          </Text>
-        </View>
+    <View style={styles.rowCard}>
+      <View
+        style={[styles.actionIcon, { backgroundColor: appearance.background }]}
+      >
+        <Ionicons name={appearance.icon} size={21} color={appearance.color} />
+      </View>
+      <View style={styles.rowLeft}>
+        <Text style={styles.rowName} numberOfLines={2}>
+          {entry.name}
+        </Text>
+        <Text style={styles.rowSubtitle} numberOfLines={2}>
+          {subtitle || "Pantry item"}
+        </Text>
+        <Text style={styles.timeText}>{timeAgo(entry.at)}</Text>
+      </View>
+      <View
+        style={[styles.actionBadge, { backgroundColor: appearance.background }]}
+      >
+        <Text style={[styles.actionBadgeText, { color: appearance.color }]}>
+          {appearance.label}
+        </Text>
       </View>
     </View>
   );
 }
-
-/* ────────────── Filters ────────────── */
 
 function FilterChip({
   label,
@@ -200,27 +218,28 @@ function FilterChip({
   onPress: () => void;
 }) {
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={[styles.filterChip, active && styles.filterChipActive]}
+      style={({ pressed }) => [
+        styles.filterChip,
+        active && styles.filterChipActive,
+        pressed && styles.pressed,
+      ]}
     >
       <Text
-        style={[
-          TextStyles.small,
-          active ? styles.filterChipTextActive : styles.filterChipText,
-        ]}
+        style={[styles.filterChipText, active && styles.filterChipTextActive]}
       >
         {label}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
-/* ────────────── Event appearance ────────────── */
-
 function getActionAppearance(action: PantryHistoryAction): {
   label: string;
+  icon: IconName;
   color: string;
   background: string;
 } {
@@ -228,50 +247,47 @@ function getActionAppearance(action: PantryHistoryAction): {
     case "purchased":
       return {
         label: "Purchased",
-        color: "rgba(20, 80, 150, 0.95)",
-        background: "rgba(30, 120, 220, 0.10)",
+        icon: "bag-check-outline",
+        color: "#516B78",
+        background: "#E8EEF0",
       };
-
     case "added":
       return {
         label: "Added",
-        color: "rgba(20, 80, 150, 0.95)",
-        background: "rgba(30, 120, 220, 0.10)",
+        icon: "add-circle-outline",
+        color: "#516B78",
+        background: "#E8EEF0",
       };
-
     case "used":
       return {
         label: "Used",
-        color: "rgba(30, 90, 35, 0.95)",
-        background: "rgba(76, 175, 80, 0.10)",
+        icon: "checkmark-circle-outline",
+        color: "#617C68",
+        background: "#E9F0E7",
       };
-
     case "expired":
       return {
         label: "Expired",
-        color: "rgba(170, 80, 0, 0.95)",
-        background: "rgba(255, 149, 0, 0.12)",
+        icon: "calendar-outline",
+        color: "#997348",
+        background: "#F5EBDE",
       };
-
     case "removed":
       return {
         label: "Removed",
-        color: "rgb(170, 20, 20)",
-        background: "rgba(255, 59, 48, 0.08)",
+        icon: "trash-outline",
+        color: "#98706C",
+        background: "#F4E9E6",
       };
   }
 }
-
-/* ────────────── Helpers ────────────── */
 
 function formatCategory(categoryKey: string): string {
   switch (categoryKey) {
     case "meatSeafood":
       return "Meat & Seafood";
-
     case "dairyEggs":
       return "Dairy & Eggs";
-
     default:
       return categoryKey
         .replace(/([A-Z])/g, " $1")
@@ -281,104 +297,192 @@ function formatCategory(categoryKey: string): string {
 
 function timeAgo(ts: number): string {
   const diffMs = Math.max(0, Date.now() - ts);
-
   const sec = Math.floor(diffMs / 1000);
   const min = Math.floor(sec / 60);
   const hr = Math.floor(min / 60);
   const day = Math.floor(hr / 24);
-
-  if (day > 0) {
-    return day === 1 ? "1 day ago" : `${day} days ago`;
-  }
-
-  if (hr > 0) {
-    return hr === 1 ? "1 hr ago" : `${hr} hrs ago`;
-  }
-
-  if (min > 0) {
-    return min === 1 ? "1 min ago" : `${min} mins ago`;
-  }
-
+  if (day > 0) return day === 1 ? "1 day ago" : `${day} days ago`;
+  if (hr > 0) return hr === 1 ? "1 hr ago" : `${hr} hrs ago`;
+  if (min > 0) return min === 1 ? "1 min ago" : `${min} mins ago`;
   return "Just now";
 }
 
-/* ────────────── Styles ────────────── */
-
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    backgroundColor: Colors.background,
+  screen: { flex: 1, backgroundColor: PALETTE.ivory },
+  listContent: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 50,
+    flexGrow: 1,
   },
-
-  headerRow: {
-    ...Layout.rowBetween,
-    marginBottom: Spacing.md,
+  hero: {
+    backgroundColor: PALETTE.slate,
+    borderRadius: 24,
+    padding: 22,
+    marginBottom: 27,
+    overflow: "hidden",
   },
-
-  headerText: {
-    flex: 1,
-  },
-
-  filterRow: {
+  eyebrowRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: Spacing.sm,
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 16,
   },
-
-  filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(120,120,120,0.35)",
-    marginRight: Spacing.xs,
-    marginBottom: Spacing.xs,
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.7,
+    color: "#F0E7DB",
   },
-
-  filterChipActive: {
-    borderColor: Colors.primary,
-    backgroundColor: "rgba(0,0,0,0.04)",
+  heroTitle: {
+    color: PALETTE.paper,
+    fontFamily: "Georgia",
+    fontSize: 30,
+    lineHeight: 36,
+    marginBottom: 9,
   },
-
-  filterChipText: {
-    color: Colors.textLight,
+  heroSubtitle: {
+    color: "#E2E7E7",
+    fontSize: 13,
+    lineHeight: 20,
+    maxWidth: 310,
   },
-
-  filterChipTextActive: {
-    color: Colors.text,
+  heroBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    marginTop: 23,
   },
-
-  emptyWrap: {
-    flex: 1,
+  heroCountIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "#718590",
     alignItems: "center",
     justifyContent: "center",
   },
-
-  rowCard: {
-    marginBottom: Spacing.xs,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
+  heroCount: { color: PALETTE.paper, fontWeight: "600", fontSize: 12 },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 13,
+    paddingHorizontal: 2,
   },
-
-  rowLeft: {
-    flex: 1,
-    paddingRight: Spacing.md,
-  },
-
-  rowRight: {
-    alignItems: "flex-end",
-  },
-
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
+  sectionEyebrow: {
+    color: PALETTE.taupe,
+    fontSize: 10,
+    letterSpacing: 1.7,
+    fontWeight: "800",
     marginBottom: 4,
   },
-
+  sectionTitle: {
+    fontFamily: "Georgia",
+    fontSize: 24,
+    color: PALETTE.charcoal,
+  },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 15,
+  },
+  filterChip: {
+    backgroundColor: PALETTE.paper,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+  },
+  filterChipActive: {
+    backgroundColor: PALETTE.slate,
+    borderColor: PALETTE.slate,
+  },
+  filterChipText: { color: PALETTE.muted, fontSize: 12, fontWeight: "700" },
+  filterChipTextActive: { color: PALETTE.white },
+  pressed: { opacity: 0.75 },
+  resultsLabel: {
+    marginBottom: 12,
+    marginLeft: 3,
+    color: PALETTE.muted,
+    fontSize: 12,
+  },
+  rowCard: {
+    backgroundColor: PALETTE.paper,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    padding: 13,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowLeft: { flex: 1, minWidth: 0 },
+  rowName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: PALETTE.charcoal,
+    marginBottom: 3,
+  },
+  rowSubtitle: { fontSize: 12, color: PALETTE.muted, lineHeight: 17 },
   timeText: {
-    color: Colors.textLight,
+    color: PALETTE.taupe,
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 6,
+  },
+  actionBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 99,
+    alignSelf: "flex-start",
+  },
+  actionBadgeText: { fontSize: 10, fontWeight: "800" },
+  emptyCard: {
+    backgroundColor: PALETTE.paper,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: PALETTE.line,
+    paddingHorizontal: 24,
+    paddingVertical: 42,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  emptyIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: PALETTE.slatePale,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  emptyTitle: {
+    fontFamily: "Georgia",
+    fontSize: 20,
+    color: PALETTE.charcoal,
+    textAlign: "center",
+  },
+  emptyDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: PALETTE.muted,
+    textAlign: "center",
+    marginTop: 9,
+  },
+  footer: {
+    color: PALETTE.taupe,
+    textAlign: "center",
+    fontSize: 11,
+    marginTop: 17,
   },
 });

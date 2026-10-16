@@ -17,22 +17,17 @@ import {
 } from "react-native";
 
 import { Ionicons } from "@expo/vector-icons";
+
 import * as ImagePicker from "expo-image-picker";
 
-import { Colors, Spacing } from "@/constants/theme";
-
-import {
-  ButtonStyles,
-  CardStyles,
-  Layout,
-  TextStyles,
-} from "@/constants/styles";
+import { StyleSheet } from "react-native";
 
 import type {
   CategoryKey,
   PantryItem,
   IngredientImage,
 } from "@/features/pantry/types";
+
 import {
   ingredientImageOverrideKey,
   getIngredientImageOverride,
@@ -62,6 +57,7 @@ type Props = {
 
 export function EditItemSheet({ open, onClose, target }: Props) {
   const { height: windowHeight } = useWindowDimensions();
+
   const updateItem = usePantryStore((state) => state.updateItem);
 
   const setPantry = usePantryStore((state) => state.setPantry);
@@ -81,15 +77,23 @@ export function EditItemSheet({ open, onClose, target }: Props) {
   const [categoryKey, setCategoryKey] = useState<CategoryKey | null>(null);
 
   const [moveSheetOpen, setMoveSheetOpen] = useState(false);
+
   const [imageActionsOpen, setImageActionsOpen] = useState(false);
+
   const [imageUrlText, setImageUrlText] = useState("");
+
   const [imagePreview, setImagePreview] = useState<IngredientImage | null>(
     null,
   );
+
   const [hasImageOverride, setHasImageOverride] = useState(false);
+
   const [imageLoading, setImageLoading] = useState(false);
+
   const [imageSaving, setImageSaving] = useState(false);
+
   const imageActionBusyRef = React.useRef(false);
+
   const galleryPickerOpenRef = React.useRef(false);
 
   const selectedCategory = CATEGORIES.find(
@@ -100,35 +104,57 @@ export function EditItemSheet({ open, onClose, target }: Props) {
   // Image changes update Zustand immediately and must not erase unsaved form edits.
   useEffect(() => {
     if (!open || !target) return;
+
     const current = usePantryStore
+
       .getState()
+
       .getItem(target.categoryKey, target.id);
+
     if (!current) return;
+
     setName(current.name ?? "");
+
     setQuantity(current.quantity ?? "");
+
     const days = getExpiresInDays(current);
+
     setExpiresInDays(days >= 9999 ? "" : String(days));
+
     setCategoryKey(target.categoryKey);
+
     setMoveSheetOpen(false);
+
     setImageActionsOpen(false);
+
     setImageUrlText("");
+
     setImagePreview(current.ingredientImage ?? null);
+
     setHasImageOverride(false);
+
     let cancelled = false;
+
     setImageLoading(true);
+
     void getIngredientImageOverride(current.name)
       .then((override) => {
         if (cancelled) return;
+
         setHasImageOverride(!!override);
+
         if (override) setImagePreview(override.image);
       })
+
       .catch((error) => {
         if (!cancelled)
           console.warn("Could not load preferred ingredient image:", error);
       })
+
       .finally(() => {
         if (!cancelled) setImageLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -136,6 +162,7 @@ export function EditItemSheet({ open, onClose, target }: Props) {
 
   useEffect(() => {
     if (!open || !target || item !== undefined) return;
+
     Alert.alert("Item not found", "It may have been deleted.", [
       { text: "OK", onPress: onClose },
     ]);
@@ -143,6 +170,7 @@ export function EditItemSheet({ open, onClose, target }: Props) {
 
   const closeIfIdle = () => {
     if (imageActionBusyRef.current || galleryPickerOpenRef.current) return;
+
     onClose();
   };
 
@@ -150,81 +178,118 @@ export function EditItemSheet({ open, onClose, target }: Props) {
   // from leaving stale file:// references on other copies of that ingredient.
   const updateMatchingImages = (
     ingredientName: string,
+
     image: IngredientImage | null,
+
     oldOverrideUrl?: string,
   ) => {
     const key = ingredientImageOverrideKey(ingredientName);
+
     if (!key) return;
+
     setPantry((previous) => {
       let changed = false;
+
       const next = { ...previous };
+
       for (const category of CATEGORIES) {
         const rows = previous[category.key] ?? [];
+
         const updated = rows.map((row) => {
           if (ingredientImageOverrideKey(row.name) !== key) return row;
+
           // Reset only rows using the removed override, preserving distinct images.
           if (oldOverrideUrl && row.ingredientImage?.url !== oldOverrideUrl)
             return row;
+
           if ((row.ingredientImage?.url ?? null) === (image?.url ?? null))
             return row;
+
           changed = true;
+
           return { ...row, ingredientImage: image };
         });
+
         if (updated.some((row, index) => row !== rows[index]))
           next[category.key] = updated;
       }
+
       return changed ? next : previous;
     });
   };
 
   const canEditImage = () => {
     if (!item) return false;
+
     if (name.trim() !== item.name.trim()) {
       Alert.alert(
         "Save the name first",
+
         "Save your renamed item, then reopen it to choose an image for the new name.",
       );
+
       return false;
     }
+
     if (!item.name.trim()) {
       Alert.alert(
         "Name required",
+
         "Enter an ingredient name before choosing an image.",
       );
+
       return false;
     }
+
     return true;
   };
 
   const saveChosenImage = async (
     image: IngredientImage,
+
     source: "gallery" | "search",
+
     mimeType?: string | null,
   ) => {
     if (!item || imageActionBusyRef.current || !canEditImage()) return;
+
     const ingredientName = item.name.trim();
+
     imageActionBusyRef.current = true;
+
     setImageSaving(true);
+
     try {
       const saved = await saveIngredientImageOverride(
         ingredientName,
+
         image,
+
         source,
+
         { mimeType },
       );
+
       updateMatchingImages(ingredientName, saved.image);
+
       setImagePreview(saved.image);
+
       setHasImageOverride(true);
+
       setImageActionsOpen(false);
+
       setImageUrlText("");
     } catch (error) {
       console.warn("Unable to save ingredient image:", error);
+
       Alert.alert(
         "Image not saved",
+
         error instanceof Error ? error.message : "Please try another image.",
       );
     } finally {
       imageActionBusyRef.current = false;
+
       setImageSaving(false);
     }
   };
@@ -236,27 +301,39 @@ export function EditItemSheet({ open, onClose, target }: Props) {
       !canEditImage()
     )
       return;
+
     galleryPickerOpenRef.current = true;
+
     try {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (!permission.granted) {
         Alert.alert(
           "Photo access needed",
+
           "Allow photo access to select an ingredient picture.",
         );
+
         return;
       }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
+
         allowsEditing: false,
+
         quality: 0.85,
       });
+
       if (result.canceled || !result.assets?.[0]) return;
+
       const asset = result.assets[0];
+
       await saveChosenImage({ url: asset.uri }, "gallery", asset.mimeType);
     } catch (error) {
       console.warn("Gallery image selection failed:", error);
+
       Alert.alert("Couldn't select image", "Please try again.");
     } finally {
       galleryPickerOpenRef.current = false;
@@ -265,44 +342,64 @@ export function EditItemSheet({ open, onClose, target }: Props) {
 
   const saveImageUrl = async () => {
     const url = imageUrlText.trim();
+
     if (!/^https?:\/\//i.test(url)) {
       Alert.alert("Invalid image URL", "Paste a direct HTTP(S) image URL.");
+
       return;
     }
+
     await saveChosenImage({ url }, "search");
   };
 
   const resetSavedImage = async () => {
     if (!item || imageActionBusyRef.current || !canEditImage()) return;
+
     const ingredientName = item.name.trim();
+
     imageActionBusyRef.current = true;
+
     setImageSaving(true);
+
     try {
       const prior = await getIngredientImageOverride(ingredientName);
+
       if (!prior) {
         setHasImageOverride(false);
+
         Alert.alert(
           "No override",
+
           "There isn't a saved image preference for this ingredient.",
         );
+
         return;
       }
+
       await removeIngredientImageOverride(ingredientName);
+
       // The old automatic lookup image is not retained by PantryItem. Use the
       // placeholder until a future scan provides a fresh automatic picture.
       updateMatchingImages(ingredientName, null, prior.image.url);
+
       setImagePreview(null);
+
       setHasImageOverride(false);
+
       setImageActionsOpen(false);
+
       setImageUrlText("");
     } catch (error) {
       console.warn("Unable to reset ingredient image:", error);
+
       Alert.alert(
         "Reset failed",
+
         "The saved image preference could not be removed.",
       );
     } finally {
       imageActionBusyRef.current = false;
+
       setImageSaving(false);
     }
   };
@@ -364,6 +461,7 @@ export function EditItemSheet({ open, onClose, target }: Props) {
       quantity: quantity.trim(),
 
       expiryDate: nextExpiryDate,
+
       // An image for the former ingredient name should not follow a rename.
       ingredientImage:
         ingredientImageOverrideKey(normalizedName) ===
@@ -413,189 +511,159 @@ export function EditItemSheet({ open, onClose, target }: Props) {
     closeIfIdle();
   };
 
+  const busy = imageSaving || imageLoading;
+
   return (
     <>
       <Modal
         visible={open}
         transparent
-        animationType="fade"
+        animationType="slide"
+        statusBarTranslucent
         onRequestClose={closeIfIdle}
       >
-        <Pressable
-          onPress={closeIfIdle}
-          style={{
-            flex: 1,
-
-            backgroundColor: "rgba(0,0,0,0.35)",
-
-            justifyContent: "flex-end",
-          }}
-        >
+        <View style={styles.modalRoot}>
           <Pressable
-            onPress={(event) => {
-              event.stopPropagation();
-            }}
+            style={styles.backdrop}
+            onPress={closeIfIdle}
+            accessibilityLabel="Close edit item"
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
           >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
+            <View
+              style={[
+                styles.sheet,
+                { maxHeight: Math.round(windowHeight * 0.9) },
+              ]}
             >
-              <View
-                style={[
-                  CardStyles.subtle,
-
-                  {
-                    borderTopLeftRadius: 22,
-
-                    borderTopRightRadius: 22,
-
-                    padding: Spacing.lg,
-
-                    paddingBottom: Spacing.lg + Spacing.sm,
-
-                    backgroundColor: Colors.card,
-                    maxHeight: Math.round(windowHeight * 0.86),
-                  },
-                ]}
-              >
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
+              <View style={styles.handle} />
+              <View style={styles.sheetHeader}>
+                <View style={styles.headerText}>
+                  <Text style={styles.eyebrow}>PANTRY · ITEM DETAILS</Text>
+                  <Text style={styles.heading}>Edit item</Text>
+                  <Text style={styles.subheading}>
+                    Update what you have on hand.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={closeIfIdle}
+                  disabled={imageSaving || galleryPickerOpenRef.current}
+                  style={styles.closeButton}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close edit item"
                 >
-                  <View
-                    style={[
-                      Layout.rowBetween,
-
-                      {
-                        marginBottom: Spacing.md,
-                      },
-                    ]}
-                  >
-                    <Text style={TextStyles.sectionTitle}>Edit item</Text>
-
-                    <TouchableOpacity
-                      onPress={closeIfIdle}
-                      activeOpacity={0.8}
-                      hitSlop={{
-                        top: 10,
-
-                        bottom: 10,
-
-                        left: 10,
-
-                        right: 10,
-                      }}
-                      style={{
-                        padding: Spacing.sm,
-
-                        borderRadius: 999,
-
-                        backgroundColor: "rgba(0,0,0,0.06)",
-                      }}
-                    >
-                      <Ionicons name="close" size={18} color={Colors.text} />
-                    </TouchableOpacity>
+                  <Ionicons name="close" size={20} color={P.ink} />
+                </Pressable>
+              </View>
+              <ScrollView
+                style={styles.sheetScroll}
+                contentContainerStyle={styles.sheetContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeadingRow}>
+                    <View style={styles.sectionSymbol}>
+                      <Ionicons
+                        name="image-outline"
+                        size={18}
+                        color={P.slate}
+                      />
+                    </View>
+                    <View style={styles.sectionText}>
+                      <Text style={styles.sectionTitle}>Ingredient image</Text>
+                      <Text style={styles.sectionDescription}>
+                        Personalize this ingredient’s picture.
+                      </Text>
+                    </View>
+                    {hasImageOverride ? (
+                      <Text style={styles.savedTag}>SAVED</Text>
+                    ) : null}
                   </View>
-
-                  <Text style={TextStyles.small}>Ingredient image</Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      marginTop: 8,
-                      marginBottom: 8,
-                    }}
-                  >
+                  <View style={styles.photoRow}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Change ingredient image"
-                      disabled={imageLoading || imageSaving}
+                      disabled={busy}
                       onPress={() => {
                         if (!canEditImage()) return;
                         setImageActionsOpen((old) => !old);
                       }}
-                      style={{
-                        width: 64,
-                        height: 64,
-                        borderRadius: 12,
-                        backgroundColor: "rgba(0,0,0,0.06)",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        overflow: "hidden",
-                      }}
+                      style={styles.photoFrame}
                     >
                       {imageLoading ? (
-                        <ActivityIndicator color={Colors.primary} />
+                        <ActivityIndicator color={P.slate} />
                       ) : imagePreview?.url ? (
                         <Image
                           source={{ uri: imagePreview.url }}
-                          style={{ width: 64, height: 64 }}
+                          style={styles.photo}
                           resizeMode="cover"
                         />
                       ) : (
                         <Ionicons
                           name="image-outline"
-                          size={26}
-                          color={Colors.textLight}
+                          size={28}
+                          color={P.slate}
                         />
                       )}
                     </Pressable>
-                    <View style={{ flex: 1, gap: 5 }}>
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        disabled={imageSaving || imageLoading}
+                    <View style={styles.photoDetails}>
+                      <Pressable
                         onPress={() => {
                           if (!canEditImage()) return;
                           setImageActionsOpen((old) => !old);
                         }}
+                        disabled={busy}
+                        style={styles.changeImageButton}
+                        accessibilityRole="button"
                       >
-                        <Text
-                          style={[
-                            TextStyles.body,
-                            { color: Colors.primary, fontWeight: "700" },
-                          ]}
-                        >
-                          Change image ✎
+                        <Text style={styles.changeImageText}>
+                          {imageActionsOpen
+                            ? "Hide image options"
+                            : "Change image"}
                         </Text>
-                      </TouchableOpacity>
-                      <Text style={TextStyles.small}>
+                        <Ionicons
+                          name={
+                            imageActionsOpen ? "chevron-up" : "chevron-forward"
+                          }
+                          size={16}
+                          color={P.slate}
+                        />
+                      </Pressable>
+                      <Text style={styles.imageCaption}>
                         {hasImageOverride
                           ? "Your saved picture is used for this ingredient."
-                          : "Uses automatic picture or a placeholder."}
+                          : "Uses an automatic picture or a placeholder."}
                       </Text>
                     </View>
                   </View>
                   {imageActionsOpen && (
-                    <View
-                      style={{
-                        padding: 12,
-                        borderRadius: 12,
-                        backgroundColor: "rgba(0,0,0,0.04)",
-                        marginBottom: Spacing.md,
-                        gap: 10,
-                      }}
-                    >
-                      <Text style={TextStyles.small}>
+                    <View style={styles.imageOptions}>
+                      <Text style={styles.helperText}>
                         Image changes save immediately and apply to matching
                         pantry items and future scans.
                       </Text>
-                      <TouchableOpacity
+                      <Pressable
+                        onPress={() => void chooseGalleryImage()}
                         disabled={imageSaving}
-                        onPress={() => {
-                          void chooseGalleryImage();
-                        }}
                         style={[
-                          ButtonStyles.primary,
-                          imageSaving && { opacity: 0.5 },
+                          styles.galleryButton,
+                          imageSaving && styles.disabled,
                         ]}
+                        accessibilityRole="button"
                       >
-                        <Text style={ButtonStyles.primaryText}>
+                        <Ionicons
+                          name="images-outline"
+                          size={19}
+                          color={P.white}
+                        />
+                        <Text style={styles.galleryText}>
                           Choose from gallery
                         </Text>
-                      </TouchableOpacity>
-                      <Text style={TextStyles.small}>
-                        Or paste a direct image URL
-                      </Text>
+                      </Pressable>
+                      <Text style={styles.fieldLabel}>OR USE AN IMAGE URL</Text>
                       <TextInput
                         value={imageUrlText}
                         onChangeText={setImageUrlText}
@@ -603,212 +671,158 @@ export function EditItemSheet({ open, onClose, target }: Props) {
                         autoCorrect={false}
                         keyboardType="url"
                         placeholder="https://example.com/photo.jpg"
-                        placeholderTextColor={Colors.textLight}
+                        placeholderTextColor={P.placeholder}
                         editable={!imageSaving}
-                        style={{
-                          borderWidth: 1,
-                          borderColor: "rgba(120,120,120,0.18)",
-                          borderRadius: 10,
-                          paddingHorizontal: 10,
-                          paddingVertical: 9,
-                          color: Colors.text,
-                        }}
+                        style={styles.field}
                       />
-                      <TouchableOpacity
+                      <Pressable
                         disabled={imageSaving || !imageUrlText.trim()}
-                        onPress={() => {
-                          void saveImageUrl();
-                        }}
-                        style={{
-                          paddingVertical: 9,
-                          alignItems: "center",
-                          opacity:
-                            !imageUrlText.trim() || imageSaving ? 0.5 : 1,
-                        }}
+                        onPress={() => void saveImageUrl()}
+                        style={[
+                          styles.outlineAction,
+                          (imageSaving || !imageUrlText.trim()) &&
+                            styles.disabled,
+                        ]}
+                        accessibilityRole="button"
                       >
-                        <Text
-                          style={[
-                            TextStyles.body,
-                            { fontWeight: "700", color: Colors.primary },
-                          ]}
-                        >
+                        <Text style={styles.outlineActionText}>
                           Save image URL
                         </Text>
-                      </TouchableOpacity>
+                      </Pressable>
                       {hasImageOverride && (
-                        <TouchableOpacity
+                        <Pressable
                           disabled={imageSaving}
-                          onPress={() => {
-                            void resetSavedImage();
-                          }}
-                          style={{ paddingVertical: 8, alignItems: "center" }}
+                          onPress={() => void resetSavedImage()}
+                          style={styles.resetAction}
                         >
-                          <Text
-                            style={[TextStyles.body, { fontWeight: "700" }]}
-                          >
+                          <Ionicons
+                            name="refresh-outline"
+                            size={16}
+                            color={P.muted}
+                          />
+                          <Text style={styles.resetText}>
                             Reset saved image
                           </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       )}
-                      {imageSaving && (
-                        <ActivityIndicator color={Colors.primary} />
-                      )}
+                      {imageSaving && <ActivityIndicator color={P.slate} />}
                     </View>
                   )}
+                </View>
 
-                  <Text style={TextStyles.small}>Name</Text>
-
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeadingRow}>
+                    <View style={styles.sectionSymbol}>
+                      <Ionicons
+                        name="create-outline"
+                        size={18}
+                        color={P.slate}
+                      />
+                    </View>
+                    <View style={styles.sectionText}>
+                      <Text style={styles.sectionTitle}>Item information</Text>
+                      <Text style={styles.sectionDescription}>
+                        The essentials for your pantry.
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldLabel}>NAME</Text>
                   <TextInput
                     value={name}
                     maxLength={40}
                     onChangeText={setName}
                     placeholder="e.g., Milk"
-                    placeholderTextColor={Colors.textLight}
-                    style={{
-                      marginTop: 6,
-
-                      borderWidth: 1,
-
-                      borderColor: "rgba(120,120,120,0.18)",
-
-                      borderRadius: 14,
-
-                      paddingHorizontal: 12,
-
-                      paddingVertical: 10,
-
-                      color: Colors.text,
-                    }}
+                    placeholderTextColor={P.placeholder}
+                    style={styles.field}
                   />
-
-                  <View
-                    style={{
-                      height: Spacing.md,
-                    }}
-                  />
-
-                  <Text style={TextStyles.small}>Quantity</Text>
-
+                  <Text style={[styles.fieldLabel, styles.nextField]}>
+                    QUANTITY
+                  </Text>
                   <TextInput
                     value={quantity}
                     onChangeText={setQuantity}
                     placeholder="e.g., 1 gallon"
-                    placeholderTextColor={Colors.textLight}
-                    style={{
-                      marginTop: 6,
-
-                      borderWidth: 1,
-
-                      borderColor: "rgba(120,120,120,0.18)",
-
-                      borderRadius: 14,
-
-                      paddingHorizontal: 12,
-
-                      paddingVertical: 10,
-
-                      color: Colors.text,
-                    }}
+                    placeholderTextColor={P.placeholder}
+                    style={styles.field}
                   />
+                </View>
 
-                  <View
-                    style={{
-                      height: Spacing.md,
-                    }}
-                  />
-
-                  <Text style={TextStyles.small}>Category</Text>
-
-                  <TouchableOpacity
-                    activeOpacity={0.8}
+                <View style={styles.sectionCard}>
+                  <View style={styles.sectionHeadingRow}>
+                    <View style={styles.sectionSymbol}>
+                      <Ionicons
+                        name="options-outline"
+                        size={18}
+                        color={P.slate}
+                      />
+                    </View>
+                    <View style={styles.sectionText}>
+                      <Text style={styles.sectionTitle}>
+                        Organization & expiry
+                      </Text>
+                      <Text style={styles.sectionDescription}>
+                        Where it belongs and when to use it.
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.fieldLabel}>CATEGORY</Text>
+                  <Pressable
                     onPress={() => setMoveSheetOpen(true)}
-                    style={{
-                      marginTop: 6,
-
-                      borderWidth: 1,
-
-                      borderColor: "rgba(120,120,120,0.18)",
-
-                      borderRadius: 14,
-
-                      paddingHorizontal: 12,
-
-                      paddingVertical: 12,
-
-                      flexDirection: "row",
-
-                      alignItems: "center",
-
-                      justifyContent: "space-between",
-                    }}
+                    style={styles.categoryField}
+                    accessibilityRole="button"
+                    accessibilityLabel="Choose category"
                   >
-                    <Text
-                      style={{
-                        color: Colors.text,
-                      }}
-                    >
-                      {selectedCategory?.label ?? "Choose category"}
-                    </Text>
-
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={Colors.textLight}
-                    />
-                  </TouchableOpacity>
-
-                  <View
-                    style={{
-                      height: Spacing.md,
-                    }}
-                  />
-
-                  <Text style={TextStyles.small}>Expires in (days)</Text>
-
+                    <View style={styles.categoryName}>
+                      <Ionicons name="grid-outline" size={18} color={P.slate} />
+                      <Text style={styles.categoryText}>
+                        {selectedCategory?.label ?? "Choose category"}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-down" size={17} color={P.muted} />
+                  </Pressable>
+                  <Text style={[styles.fieldLabel, styles.nextField]}>
+                    EXPIRES IN (DAYS)
+                  </Text>
                   <TextInput
                     value={expiresInDays}
                     onChangeText={setExpiresInDays}
                     keyboardType="number-pad"
                     placeholder="e.g., 5"
-                    placeholderTextColor={Colors.textLight}
-                    style={{
-                      marginTop: 6,
-
-                      borderWidth: 1,
-
-                      borderColor: "rgba(120,120,120,0.18)",
-
-                      borderRadius: 14,
-
-                      paddingHorizontal: 12,
-
-                      paddingVertical: 10,
-
-                      color: Colors.text,
-                    }}
+                    placeholderTextColor={P.placeholder}
+                    style={styles.field}
                   />
+                  <Text style={styles.helperText}>
+                    Leave blank for no expiration. Enter 0 for today.
+                  </Text>
+                </View>
 
-                  <View
-                    style={{
-                      height: Spacing.lg,
-                    }}
-                  />
-
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    style={ButtonStyles.primary}
-                    onPress={save}
-                    disabled={imageSaving || imageLoading}
+                <View style={styles.actions}>
+                  <Pressable
+                    style={styles.cancelButton}
+                    onPress={closeIfIdle}
+                    disabled={imageSaving}
+                    accessibilityRole="button"
                   >
-                    <Text style={ButtonStyles.primaryText}>Save</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
-            </KeyboardAvoidingView>
-          </Pressable>
-        </Pressable>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.saveButton, busy && styles.disabled]}
+                    onPress={save}
+                    disabled={busy}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="checkmark" color={P.white} size={19} />
+                    <Text style={styles.saveText}>Save changes</Text>
+                  </Pressable>
+                </View>
+                <Text style={styles.footer}>
+                  KITCHENBUDDY · KEEP YOUR PANTRY CURRENT
+                </Text>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
-
       <BulkMoveSheet
         open={moveSheetOpen}
         onClose={() => setMoveSheetOpen(false)}
@@ -819,3 +833,242 @@ export function EditItemSheet({ open, onClose, target }: Props) {
     </>
   );
 }
+
+const P = {
+  bg: "#F6F3EE",
+  white: "#FFFEFB",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDeep: "#485F6A",
+  taupe: "#E8E2DA",
+  border: "#E9E5DE",
+  placeholder: "#A2A19A",
+};
+
+const styles = StyleSheet.create({
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(26,31,34,0.48)",
+  },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    backgroundColor: P.bg,
+    paddingTop: 10,
+    overflow: "hidden",
+  },
+  handle: {
+    width: 42,
+    height: 5,
+    borderRadius: 9,
+    backgroundColor: "#D4CEC5",
+    alignSelf: "center",
+    marginBottom: 18,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 22,
+    marginBottom: 18,
+  },
+  headerText: { flex: 1 },
+  eyebrow: {
+    color: P.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  heading: {
+    color: P.ink,
+    fontSize: 30,
+    fontFamily: "serif",
+    fontWeight: "600",
+    letterSpacing: -0.4,
+  },
+  subheading: { color: P.muted, fontSize: 12, lineHeight: 19, marginTop: 5 },
+  closeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: P.taupe,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  sheetScroll: { flexGrow: 0 },
+  sheetContent: { paddingHorizontal: 18, paddingBottom: 30, gap: 13 },
+  sectionCard: {
+    backgroundColor: P.white,
+    borderWidth: 1,
+    borderColor: P.border,
+    borderRadius: 21,
+    padding: 17,
+  },
+  sectionHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 17,
+    gap: 10,
+  },
+  sectionSymbol: {
+    backgroundColor: P.taupe,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionText: { flex: 1 },
+  sectionTitle: {
+    color: P.ink,
+    fontSize: 17,
+    fontFamily: "serif",
+    fontWeight: "600",
+  },
+  sectionDescription: {
+    color: P.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  savedTag: {
+    color: P.slate,
+    backgroundColor: P.bg,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    overflow: "hidden",
+    borderRadius: 8,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  photoRow: { flexDirection: "row", alignItems: "center", gap: 13 },
+  photoFrame: {
+    width: 80,
+    height: 80,
+    backgroundColor: P.bg,
+    borderWidth: 1,
+    borderColor: P.border,
+    borderRadius: 15,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photo: { width: "100%", height: "100%" },
+  photoDetails: { flex: 1 },
+  changeImageButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 5,
+  },
+  changeImageText: { color: P.slateDeep, fontWeight: "700", fontSize: 13 },
+  imageCaption: { color: P.muted, fontSize: 11, lineHeight: 17 },
+  imageOptions: {
+    backgroundColor: P.bg,
+    borderRadius: 15,
+    padding: 12,
+    marginTop: 14,
+    gap: 9,
+  },
+  helperText: { color: P.muted, fontSize: 11, lineHeight: 17, marginTop: 8 },
+  galleryButton: {
+    minHeight: 44,
+    backgroundColor: P.slate,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 9,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  galleryText: { color: P.white, fontSize: 13, fontWeight: "700" },
+  fieldLabel: {
+    color: P.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  field: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: P.border,
+    backgroundColor: P.bg,
+    paddingVertical: 10,
+    paddingHorizontal: 13,
+    color: P.ink,
+    fontSize: 14,
+  },
+  nextField: { marginTop: 16 },
+  outlineAction: {
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: P.slate,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  outlineActionText: { color: P.slateDeep, fontSize: 13, fontWeight: "700" },
+  resetAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    justifyContent: "center",
+    paddingVertical: 9,
+  },
+  resetText: { color: P.muted, fontSize: 12, fontWeight: "600" },
+  categoryField: {
+    minHeight: 49,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: P.border,
+    backgroundColor: P.bg,
+    paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  categoryName: { flexDirection: "row", alignItems: "center", gap: 9, flex: 1 },
+  categoryText: {
+    fontSize: 13,
+    color: P.ink,
+    fontWeight: "600",
+    flexShrink: 1,
+  },
+  actions: { flexDirection: "row", gap: 10, marginTop: 3 },
+  cancelButton: {
+    flex: 0.9,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: P.border,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: P.white,
+  },
+  cancelText: { color: P.ink, fontSize: 14, fontWeight: "700" },
+  saveButton: {
+    flex: 1.3,
+    minHeight: 52,
+    backgroundColor: P.slateDeep,
+    borderRadius: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  saveText: { color: P.white, fontSize: 14, fontWeight: "700" },
+  disabled: { opacity: 0.45 },
+  footer: {
+    textAlign: "center",
+    color: P.placeholder,
+    fontSize: 9,
+    letterSpacing: 1,
+    marginTop: 8,
+  },
+});

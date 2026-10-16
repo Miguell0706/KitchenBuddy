@@ -1,24 +1,18 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
-  Platform,
-  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { nanoid } from "nanoid/non-secure";
 
-import { Colors, Spacing } from "@/constants/theme";
-import {
-  CardStyles,
-  Layout,
-  TextStyles,
-  ButtonStyles,
-} from "@/constants/styles";
 import type { CategoryKey } from "@/features/pantry/types";
 import { usePantryStore } from "@/features/pantry/store";
 import { useDefaultExpiry } from "@/features/pantry/useDefaultExpiry";
@@ -29,7 +23,19 @@ type Props = {
   onClose: () => void;
 };
 
-// If you already have a CATEGORIES constant elsewhere, import it instead.
+const P = {
+  bg: "#F6F3EE",
+  paper: "#FFFEFB",
+  ink: "#292D2C",
+  muted: "#747571",
+  slate: "#586D77",
+  slateDeep: "#485F6A",
+  taupe: "#E8E2DA",
+  line: "#E9E5DE",
+  tint: "#F3EFE8",
+  white: "#FFFFFF",
+};
+
 const CATEGORY_OPTIONS: {
   key: CategoryKey;
   label: string;
@@ -52,22 +58,17 @@ function isoDateDaysFromNow(days: number): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + days);
-
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
 }
 
 export function QuickAddSheet({ open, onClose }: Props) {
   const quickAddItem = usePantryStore((s) => s.addItem);
-
   const [name, setName] = useState("");
   const [categoryKey, setCategoryKey] = useState<CategoryKey>("produce");
   const [catOpen, setCatOpen] = useState(false);
-
-  // Call hook here, using the current categoryKey
   const defaultExpiry = useDefaultExpiry(categoryKey);
 
   useEffect(() => {
@@ -85,12 +86,9 @@ export function QuickAddSheet({ open, onClose }: Props) {
   const save = () => {
     const normalizedName = name.trim().slice(0, 40);
     if (!normalizedName) return;
-
     const d = defaultExpiry;
-
     const expiresInDays = d === "none" ? 9999 : d;
     const expiryDate = d === "none" ? null : isoDateDaysFromNow(expiresInDays);
-
     const newItem = {
       id: nanoid(),
       name: normalizedName,
@@ -99,11 +97,8 @@ export function QuickAddSheet({ open, onClose }: Props) {
       expiryDate,
       addedAt: Date.now(),
     };
-
     quickAddItem(categoryKey, newItem);
-
     void appendPantryHistory(newItem, "added", "quickAdd");
-
     onClose();
   };
 
@@ -114,179 +109,348 @@ export function QuickAddSheet({ open, onClose }: Props) {
       animationType="fade"
       onRequestClose={onClose}
     >
-      {/* Backdrop */}
-      <Pressable
-        onPress={onClose}
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.35)",
-          justifyContent: "flex-end",
-        }}
-      >
-        {/* Stop press bubbling so taps inside sheet don't close it */}
-        <Pressable onPress={() => {}} style={{ width: "100%" }}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-          >
-            <View
-              style={[
-                CardStyles.subtle,
-                {
-                  borderTopLeftRadius: 22,
-                  borderTopRightRadius: 22,
-                  padding: Spacing.lg,
-                  paddingBottom: Spacing.lg + Spacing.sm,
-                  backgroundColor: Colors.card,
-                },
-              ]}
-            >
-              {/* Header */}
-              <View style={[Layout.rowBetween, { marginBottom: Spacing.md }]}>
-                <Text style={TextStyles.sectionTitle}>Quick add</Text>
+      <View style={styles.modalRoot}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close quick add"
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <View style={styles.header}>
+              <View style={styles.headingCopy}>
+                <Text style={styles.eyebrow}>YOUR PANTRY / QUICK ENTRY</Text>
+                <Text style={styles.title}>Quick add</Text>
+                <Text style={styles.subtitle}>
+                  Add an ingredient in just a few taps.
+                </Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                style={styles.closeButton}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Ionicons name="close" size={20} color={P.ink} />
+              </Pressable>
+            </View>
 
-                <TouchableOpacity
-                  onPress={onClose}
-                  activeOpacity={0.8}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={{
-                    padding: Spacing.sm,
-                    borderRadius: 999,
-                    backgroundColor: "rgba(0,0,0,0.06)",
-                  }}
-                >
-                  <Ionicons name="close" size={18} color={Colors.text} />
-                </TouchableOpacity>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              nestedScrollEnabled
+            >
+              <View style={styles.formCard}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Ingredient name</Text>
+                  <Text style={styles.required}>REQUIRED</Text>
+                </View>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="basket-outline" size={19} color={P.slate} />
+                  <TextInput
+                    value={name}
+                    maxLength={40}
+                    onChangeText={setName}
+                    placeholder="e.g., Apples"
+                    placeholderTextColor={P.muted}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={save}
+                    style={styles.input}
+                    accessibilityLabel="Ingredient name"
+                  />
+                </View>
+                <Text style={styles.helper}>
+                  Only the name is required · {name.length}/40
+                </Text>
               </View>
 
-              {/* Name */}
-              <Text style={TextStyles.small}>Name</Text>
-              <TextInput
-                value={name}
-                maxLength={40}
-                onChangeText={setName}
-                placeholder="e.g., Apples"
-                placeholderTextColor={Colors.textLight}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={save}
-                style={{
-                  marginTop: 6,
-                  borderWidth: 1,
-                  borderColor: "rgba(120,120,120,0.18)",
-                  borderRadius: 14,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  color: Colors.text,
-                }}
-              />
-
-              <View style={{ height: Spacing.md }} />
-
-              {/* Category */}
-              <Text style={TextStyles.small}>Category (optional)</Text>
-
-              {/* Dropdown header */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => setCatOpen((v) => !v)}
-                style={[
-                  Layout.rowBetween,
-                  {
-                    marginTop: 6,
-                    borderWidth: 1,
-                    borderColor: "rgba(120,120,120,0.18)",
-                    borderRadius: 14,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    backgroundColor: "rgba(120,120,120,0.06)",
-                  },
-                ]}
-              >
-                <View style={[Layout.rowCenter, { flex: 1 }]}>
-                  <Ionicons
-                    name={selected?.icon ?? "leaf-outline"}
-                    size={18}
-                    color={Colors.text}
-                  />
-                  <Text
-                    style={[TextStyles.body, { marginLeft: 8 }]}
-                    numberOfLines={1}
-                  >
-                    {selected?.label ?? "Produce"}
-                  </Text>
+              <View style={styles.formCard}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Category</Text>
+                  <Text style={styles.optional}>OPTIONAL</Text>
                 </View>
-
-                <Ionicons
-                  name={catOpen ? "chevron-up-outline" : "chevron-down-outline"}
-                  size={18}
-                  color={Colors.textLight}
-                />
-              </TouchableOpacity>
-
-              {/* Dropdown options */}
-              {catOpen && (
-                <View
-                  style={{
-                    marginTop: Spacing.sm,
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                  }}
+                <Pressable
+                  onPress={() => setCatOpen((v) => !v)}
+                  style={styles.categoryTrigger}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Category: ${selected?.label ?? "Produce"}`}
+                  accessibilityState={{ expanded: catOpen }}
                 >
-                  {CATEGORY_OPTIONS.map((c) => {
-                    const active = c.key === categoryKey;
-                    return (
-                      <TouchableOpacity
-                        key={c.key}
-                        activeOpacity={0.85}
-                        onPress={() => {
-                          setCategoryKey(c.key);
-                          setCatOpen(false);
-                        }}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          paddingHorizontal: 10,
-                          paddingVertical: 8,
-                          borderRadius: 999,
-                          borderWidth: 1,
-                          borderColor: active
-                            ? "rgba(60,60,60,0.35)"
-                            : "rgba(120,120,120,0.18)",
-                          backgroundColor: active
-                            ? "rgba(0,0,0,0.06)"
-                            : "transparent",
-                          marginRight: 8,
-                          marginTop: 8,
-                        }}
-                      >
-                        <Ionicons name={c.icon} size={16} color={Colors.text} />
-                        <Text style={[TextStyles.small, { marginLeft: 6 }]}>
-                          {c.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
+                  <View style={styles.categoryIcon}>
+                    <Ionicons
+                      name={selected?.icon ?? "leaf-outline"}
+                      size={20}
+                      color={P.slateDeep}
+                    />
+                  </View>
+                  <View style={styles.categoryTriggerText}>
+                    <Text style={styles.categoryName}>
+                      {selected?.label ?? "Produce"}
+                    </Text>
+                    <Text style={styles.categorySub}>
+                      Uses your category's default expiry
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={catOpen ? "chevron-up" : "chevron-down"}
+                    size={19}
+                    color={P.slate}
+                  />
+                </Pressable>
 
-              <View style={{ height: Spacing.lg }} />
+                {catOpen && (
+                  <View style={styles.optionGrid}>
+                    {CATEGORY_OPTIONS.map((c) => {
+                      const active = c.key === categoryKey;
+                      return (
+                        <Pressable
+                          key={c.key}
+                          onPress={() => {
+                            setCategoryKey(c.key);
+                            setCatOpen(false);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={[
+                            styles.categoryOption,
+                            active && styles.categoryOptionActive,
+                          ]}
+                        >
+                          <Ionicons
+                            name={c.icon}
+                            size={17}
+                            color={active ? P.white : P.slate}
+                          />
+                          <Text
+                            style={[
+                              styles.optionText,
+                              active && styles.optionTextActive,
+                            ]}
+                          >
+                            {c.label}
+                          </Text>
+                          {active && (
+                            <Ionicons
+                              name="checkmark"
+                              size={15}
+                              color={P.white}
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
 
-              {/* Save */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={[
-                  ButtonStyles.primary,
-                  { opacity: name.trim() ? 1 : 0.5 },
-                ]}
-                disabled={!name.trim()}
+              <View style={styles.noteRow}>
+                <Ionicons name="time-outline" size={18} color={P.slate} />
+                <Text style={styles.note}>
+                  The expiry date will be assigned automatically using your
+                  current default for {selected?.label ?? "Produce"}.
+                </Text>
+              </View>
+
+              <Pressable
                 onPress={save}
+                disabled={!name.trim()}
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  !name.trim() && styles.disabled,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Add to pantry"
               >
-                <Text style={ButtonStyles.primaryText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </Pressable>
-      </Pressable>
+                <Ionicons name="add-circle-outline" size={20} color={P.white} />
+                <Text style={styles.saveText}>Add to pantry</Text>
+                <Ionicons name="arrow-forward" size={17} color={P.white} />
+              </Pressable>
+              <Pressable
+                onPress={onClose}
+                style={styles.cancelButton}
+                accessibilityRole="button"
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+    backgroundColor: "rgba(25,31,33,0.48)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    maxHeight: "90%",
+    backgroundColor: P.bg,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: "hidden",
+    paddingTop: 10,
+  },
+  handle: {
+    width: 40,
+    height: 5,
+    borderRadius: 5,
+    backgroundColor: "#C7C1B8",
+    alignSelf: "center",
+    marginBottom: 19,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 22,
+    paddingBottom: 18,
+    gap: 14,
+  },
+  headingCopy: { flex: 1 },
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.8,
+    color: P.slate,
+    marginBottom: 6,
+  },
+  title: {
+    fontFamily: "serif",
+    fontSize: 30,
+    fontWeight: "700",
+    color: P.ink,
+    lineHeight: 37,
+  },
+  subtitle: { fontSize: 13, color: P.muted, lineHeight: 19, marginTop: 4 },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: P.taupe,
+  },
+  scroll: { flexGrow: 0 },
+  scrollContent: { paddingHorizontal: 18, paddingBottom: 32 },
+  formCard: {
+    backgroundColor: P.paper,
+    borderWidth: 1,
+    borderColor: P.line,
+    borderRadius: 19,
+    padding: 16,
+    marginBottom: 12,
+  },
+  labelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 11,
+  },
+  label: { color: P.ink, fontSize: 14, fontWeight: "700" },
+  required: {
+    color: P.slate,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+  },
+  optional: {
+    color: P.muted,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.1,
+  },
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: P.line,
+    backgroundColor: P.bg,
+    paddingHorizontal: 13,
+    minHeight: 51,
+  },
+  input: { flex: 1, color: P.ink, fontSize: 15, paddingVertical: 10 },
+  helper: { marginTop: 9, color: P.muted, fontSize: 11, lineHeight: 16 },
+  categoryTrigger: {
+    minHeight: 62,
+    borderRadius: 14,
+    backgroundColor: P.tint,
+    borderWidth: 1,
+    borderColor: P.line,
+    padding: 9,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+  categoryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: P.taupe,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryTriggerText: { flex: 1 },
+  categoryName: { color: P.ink, fontSize: 14, fontWeight: "700" },
+  categorySub: { color: P.muted, fontSize: 11, marginTop: 3 },
+  optionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
+  categoryOption: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 11,
+    backgroundColor: P.tint,
+    borderColor: P.line,
+    borderWidth: 1,
+  },
+  categoryOptionActive: { backgroundColor: P.slate, borderColor: P.slate },
+  optionText: { color: P.ink, fontSize: 12, fontWeight: "600" },
+  optionTextActive: { color: P.white },
+  noteRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "flex-start",
+    backgroundColor: P.taupe,
+    borderRadius: 14,
+    padding: 13,
+    marginTop: 3,
+    marginBottom: 19,
+  },
+  note: { color: P.slateDeep, flex: 1, fontSize: 12, lineHeight: 18 },
+  saveButton: {
+    backgroundColor: P.slateDeep,
+    minHeight: 53,
+    borderRadius: 15,
+    paddingHorizontal: 17,
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveText: {
+    color: P.white,
+    fontSize: 15,
+    fontWeight: "800",
+    flex: 1,
+    textAlign: "center",
+  },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.83 },
+  cancelButton: { alignItems: "center", padding: 15, marginTop: 5 },
+  cancelText: { color: P.muted, fontSize: 13, fontWeight: "700" },
+});
