@@ -10,9 +10,10 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -123,6 +124,18 @@ async function fetchAutoImage(name: string): Promise<IngredientImage | null> {
   }
 }
 
+type DialogTone = "information" | "warning" | "success" | "destructive";
+type DialogState = {
+  title: string;
+  message: string;
+  tone: DialogTone;
+  eyebrow?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm?: () => void;
+  onDismiss?: () => void;
+};
+
 type ExpiryChoice = "default" | "none" | "days";
 type ReviewItem = {
   source: GroceryItem;
@@ -196,6 +209,28 @@ export default function ShoppingFinishScreen() {
   const [imageSaving, setImageSaving] = useState(false);
   const [categoryForId, setCategoryForId] = useState<string | null>(null);
   const expiryOverrides = useSettingsStore((state) => state.expiryOverrides);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+
+  function showNotice(
+    title: string,
+    message: string,
+    tone: DialogTone = "information",
+  ) {
+    Keyboard.dismiss();
+    setDialog({ title, message, tone, confirmLabel: "Got it" });
+  }
+
+  function dismissDialog() {
+    const callback = dialog?.onDismiss;
+    setDialog(null);
+    callback?.();
+  }
+
+  function acceptDialog() {
+    const callback = dialog?.onConfirm ?? dialog?.onDismiss;
+    setDialog(null);
+    callback?.();
+  }
 
   const reload = useCallback(async (isActive: () => boolean) => {
     try {
@@ -337,7 +372,11 @@ export default function ShoppingFinishScreen() {
     } catch (error) {
       console.warn("Finish Shopping: unable to load review", error);
       if (isActive())
-        Alert.alert("Review unavailable", "Please go back and try again.");
+        showNotice(
+          "Review unavailable",
+          "Please go back and try again.",
+          "warning",
+        );
     } finally {
       if (isActive()) setLoading(false);
     }
@@ -401,9 +440,10 @@ export default function ShoppingFinishScreen() {
       setImageUrlText("");
     } catch (error) {
       console.warn("Finish Shopping: image not saved", error);
-      Alert.alert(
+      showNotice(
         "Image not saved",
         error instanceof Error ? error.message : "Please choose another image.",
+        "warning",
       );
     } finally {
       imageActionBusyRef.current = false;
@@ -424,9 +464,10 @@ export default function ShoppingFinishScreen() {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert(
+        showNotice(
           "Photo access needed",
           "Allow photo access to choose an ingredient image.",
+          "warning",
         );
         return;
       }
@@ -440,7 +481,7 @@ export default function ShoppingFinishScreen() {
       await saveChosenImage("gallery", { url: asset.uri }, asset.mimeType);
     } catch (error) {
       console.warn("Finish Shopping: gallery picker failed", error);
-      Alert.alert("Couldn't select image", "Please try again.");
+      showNotice("Couldn't select image", "Please try again.", "warning");
     } finally {
       galleryPickerOpenRef.current = false;
     }
@@ -449,7 +490,11 @@ export default function ShoppingFinishScreen() {
   async function saveImageUrl() {
     const url = imageUrlText.trim();
     if (!/^https?:\/\//i.test(url)) {
-      Alert.alert("Invalid image URL", "Paste a direct HTTP(S) image URL.");
+      showNotice(
+        "Invalid image URL",
+        "Paste a direct HTTP(S) image URL.",
+        "warning",
+      );
       return;
     }
     await saveChosenImage("search", { url });
@@ -475,7 +520,7 @@ export default function ShoppingFinishScreen() {
           delete next[key];
           return next;
         });
-        Alert.alert(
+        showNotice(
           "No saved override",
           "This ingredient is already using its automatic picture.",
         );
@@ -527,18 +572,20 @@ export default function ShoppingFinishScreen() {
           "Finish Shopping: unable to restore automatic image",
           error,
         );
-        Alert.alert(
+        showNotice(
           "Automatic image unavailable",
           "The preference was reset. The automatic image couldn't load right now; it can be retrieved next time.",
+          "warning",
         );
       } finally {
         setImageLoading((previous) => ({ ...previous, [key]: false }));
       }
     } catch (error) {
       console.warn("Finish Shopping: reset image failed", error);
-      Alert.alert(
+      showNotice(
         "Reset failed",
         error instanceof Error ? error.message : "Please try again.",
+        "warning",
       );
     } finally {
       imageActionBusyRef.current = false;
@@ -688,7 +735,42 @@ export default function ShoppingFinishScreen() {
     return { purchased: pantryItems.length, left: remaining.length };
   }
 
-  const confirm = async () => {
+  // Keep review validation and transfer semantics unchanged. The following
+  // presentation state replaces native alerts, not the shopping transaction.
+  async function completePurchase() {
+    if (
+      busyRef.current ||
+      imageActionBusyRef.current ||
+      galleryPickerOpenRef.current
+    )
+      return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const outcome = await performTransfer(review);
+      setDialog({
+        title: "Shopping complete!",
+        message: `${outcome.purchased} item${outcome.purchased === 1 ? "" : "s"} added to Pantry. ${outcome.left} grocery item${outcome.left === 1 ? "" : "s"} remain on your list.`,
+        eyebrow: "ALL DONE",
+        tone: "success",
+        confirmLabel: "View Pantry",
+        onConfirm: () => router.replace("/(tabs)/pantry"),
+        onDismiss: () => router.replace("/(tabs)/pantry"),
+      });
+    } catch (cause) {
+      console.warn("Finish Shopping: transfer did not complete", cause);
+      showNotice(
+        "Could not finish shopping",
+        `${cause instanceof Error ? cause.message : "Please try again."}\n\nIf the Pantry save already succeeded, retrying won't add those items twice. Your grocery list stays until the transfer completes.`,
+        "warning",
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  const confirm = () => {
     if (
       busyRef.current ||
       imageActionBusyRef.current ||
@@ -699,57 +781,50 @@ export default function ShoppingFinishScreen() {
       return;
     const error = validate(review);
     if (error) {
-      Alert.alert("Check your items", error);
+      showNotice("Check your items", error, "warning");
       return;
     }
-    Alert.alert(
-      "Add collected items to Pantry?",
-      `Add ${review.length} collected item${review.length === 1 ? "" : "s"}, record them as purchased, and leave uncollected groceries on your list?`,
-      [
-        { text: "Keep reviewing", style: "cancel" },
-        {
-          text: "Confirm purchase",
-          onPress: () => {
-            void (async () => {
-              if (
-                busyRef.current ||
-                imageActionBusyRef.current ||
-                galleryPickerOpenRef.current
-              )
-                return;
-              busyRef.current = true;
-              setBusy(true);
-              try {
-                const outcome = await performTransfer(review);
-                Alert.alert(
-                  "Shopping complete!",
-                  `${outcome.purchased} item${outcome.purchased === 1 ? "" : "s"} added to Pantry. ${outcome.left} grocery item${outcome.left === 1 ? "" : "s"} remain on your list.`,
-                  [
-                    {
-                      text: "View Pantry",
-                      onPress: () => router.replace("/(tabs)/pantry"),
-                    },
-                  ],
-                );
-              } catch (cause) {
-                console.warn(
-                  "Finish Shopping: transfer did not complete",
-                  cause,
-                );
-                Alert.alert(
-                  "Could not finish shopping",
-                  `${cause instanceof Error ? cause.message : "Please try again."}\n\nIf the Pantry save already succeeded, retrying won't add those items twice. Your grocery list stays until the transfer completes.`,
-                );
-              } finally {
-                busyRef.current = false;
-                setBusy(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    Keyboard.dismiss();
+    setDialog({
+      eyebrow: "READY TO PUT AWAY",
+      title: "Add collected items to Pantry?",
+      message: `Add ${review.length} collected item${review.length === 1 ? "" : "s"}, record them as purchased, and leave uncollected groceries on your list?`,
+      tone: "information",
+      cancelLabel: "Keep reviewing",
+      confirmLabel: "Confirm purchase",
+      onConfirm: () => {
+        void completePurchase();
+      },
+    });
   };
+
+  async function completeWithoutPantry() {
+    if (
+      busyRef.current ||
+      imageActionBusyRef.current ||
+      galleryPickerOpenRef.current
+    )
+      return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const ids = new Set(review.map((row) => row.source.id));
+      const fresh = await readGroceryList();
+      const next = fresh.filter((item) => !(ids.has(item.id) && item.checked));
+      await AsyncStorage.setItem(GROCERY_STORAGE_KEY, JSON.stringify(next));
+      router.replace("/(tabs)/grocery-list");
+    } catch (error) {
+      console.warn("Finish without Pantry failed", error);
+      showNotice(
+        "Couldn't finish",
+        "Nothing was intentionally cleared. Please try again.",
+        "warning",
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
 
   const finishWithoutPantry = () => {
     if (
@@ -760,50 +835,19 @@ export default function ShoppingFinishScreen() {
       !review.length
     )
       return;
-    Alert.alert(
-      "Finish without Pantry?",
-      "Remove the collected groceries from your list without adding them to Pantry or Analytics? Uncollected items will remain.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Finish without adding",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              if (
-                busyRef.current ||
-                imageActionBusyRef.current ||
-                galleryPickerOpenRef.current
-              )
-                return;
-              busyRef.current = true;
-              setBusy(true);
-              try {
-                const ids = new Set(review.map((row) => row.source.id));
-                const fresh = await readGroceryList();
-                const next = fresh.filter(
-                  (item) => !(ids.has(item.id) && item.checked),
-                );
-                await AsyncStorage.setItem(
-                  GROCERY_STORAGE_KEY,
-                  JSON.stringify(next),
-                );
-                router.replace("/(tabs)/grocery-list");
-              } catch (error) {
-                console.warn("Finish without Pantry failed", error);
-                Alert.alert(
-                  "Couldn't finish",
-                  "Nothing was intentionally cleared. Please try again.",
-                );
-              } finally {
-                busyRef.current = false;
-                setBusy(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    Keyboard.dismiss();
+    setDialog({
+      eyebrow: "SKIP PANTRY TRANSFER",
+      title: "Finish without Pantry?",
+      message:
+        "Remove the collected groceries from your list without adding them to Pantry or Analytics? Uncollected items will remain.",
+      tone: "destructive",
+      cancelLabel: "Keep reviewing",
+      confirmLabel: "Finish without adding",
+      onConfirm: () => {
+        void completeWithoutPantry();
+      },
+    });
   };
 
   return (
@@ -819,14 +863,14 @@ export default function ShoppingFinishScreen() {
           onPress={() => router.back()}
           style={styles.back}
         >
-          <Ionicons name="arrow-back" size={22} color="#26392E" />
+          <Ionicons name="arrow-back" size={22} color="#292D2C" />
         </Pressable>
-        <Text style={styles.topTitle}>Finish Shopping</Text>
-        <Ionicons name="basket-outline" size={23} color="#367A57" />
+        <Text style={styles.topTitle}>Finish shopping</Text>
+        <Ionicons name="basket-outline" size={22} color="#485F6A" />
       </View>
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#367A57" />
+          <ActivityIndicator size="large" color="#485F6A" />
           <Text style={styles.subtle}>Loading your purchases...</Text>
         </View>
       ) : (
@@ -835,12 +879,13 @@ export default function ShoppingFinishScreen() {
           contentContainerStyle={styles.content}
         >
           <View style={styles.summary}>
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={32}
-              color="#367A57"
-            />
-            <Text style={styles.summaryTitle}>Review your shopping</Text>
+            <View style={styles.summaryIcon}>
+              <Ionicons name="basket-outline" size={24} color="#FFFEFB" />
+            </View>
+            <Text style={styles.summaryEyebrow}>
+              SHOPPING MODE · FINAL STEP
+            </Text>
+            <Text style={styles.summaryTitle}>Review your shopping.</Text>
             <Text style={styles.subtle}>
               Confirm quantities and expiry before adding purchased groceries to
               Pantry.
@@ -890,18 +935,18 @@ export default function ShoppingFinishScreen() {
                       ) : (
                         <View style={[styles.thumbnail, styles.placeholder]}>
                           {imageLoading[imageKey] ? (
-                            <ActivityIndicator size="small" color="#6B987B" />
+                            <ActivityIndicator size="small" color="#586D77" />
                           ) : (
                             <Ionicons
                               name="basket-outline"
                               size={22}
-                              color="#6B987B"
+                              color="#586D77"
                             />
                           )}
                         </View>
                       )}
                       <View style={styles.imageEditIcon}>
-                        <Ionicons name="pencil" size={10} color="#FFFFFF" />
+                        <Ionicons name="pencil" size={10} color="#FFFEFB" />
                       </View>
                     </Pressable>
                     <View style={{ flex: 1 }}>
@@ -922,7 +967,7 @@ export default function ShoppingFinishScreen() {
                     <Ionicons
                       name="checkmark-circle"
                       size={22}
-                      color="#367A57"
+                      color="#485F6A"
                     />
                   </View>
                   {imagePickerForId === row.source.id && (
@@ -946,7 +991,7 @@ export default function ShoppingFinishScreen() {
                         <Ionicons
                           name="images-outline"
                           size={19}
-                          color="#367A57"
+                          color="#485F6A"
                         />
                         <Text style={styles.imageActionText}>
                           Choose from gallery
@@ -963,7 +1008,7 @@ export default function ShoppingFinishScreen() {
                         autoCorrect={false}
                         keyboardType="url"
                         placeholder="https://example.com/image.jpg"
-                        placeholderTextColor="#8B998E"
+                        placeholderTextColor="#747571"
                         style={styles.input}
                       />
                       <Pressable
@@ -979,7 +1024,7 @@ export default function ShoppingFinishScreen() {
                         <Ionicons
                           name="link-outline"
                           size={19}
-                          color="#367A57"
+                          color="#485F6A"
                         />
                         <Text style={styles.imageActionText}>
                           Save image URL
@@ -998,7 +1043,7 @@ export default function ShoppingFinishScreen() {
                           <Ionicons
                             name="refresh-outline"
                             size={19}
-                            color="#367A57"
+                            color="#485F6A"
                           />
                           <Text style={styles.imageActionText}>
                             Reset to automatic image
@@ -1007,7 +1052,7 @@ export default function ShoppingFinishScreen() {
                       )}
                       {imageSaving ? (
                         <View style={styles.imageBusy}>
-                          <ActivityIndicator size="small" color="#367A57" />
+                          <ActivityIndicator size="small" color="#485F6A" />
                           <Text style={styles.hint}>Saving image...</Text>
                         </View>
                       ) : (
@@ -1029,7 +1074,7 @@ export default function ShoppingFinishScreen() {
                       updateDraft(row.source.id, { quantityText })
                     }
                     placeholder="e.g., 1 or 2 bottles"
-                    placeholderTextColor="#8B998E"
+                    placeholderTextColor="#747571"
                     style={styles.input}
                   />
                   <Text style={styles.label}>Pantry category</Text>
@@ -1050,7 +1095,7 @@ export default function ShoppingFinishScreen() {
                           : "chevron-down"
                       }
                       size={17}
-                      color="#56715F"
+                      color="#586D77"
                     />
                   </Pressable>
                   {categoryForId === row.source.id && (
@@ -1149,7 +1194,7 @@ export default function ShoppingFinishScreen() {
                   (busy || imageSaving) && styles.disabled,
                 ]}
               >
-                <Ionicons name="cube-outline" color="#FFFFFF" size={19} />
+                <Ionicons name="cube-outline" color="#FFFEFB" size={19} />
                 <Text style={styles.primaryText}>
                   Add {review.length} to Pantry
                 </Text>
@@ -1180,26 +1225,137 @@ export default function ShoppingFinishScreen() {
       )}
       {busy && (
         <View style={styles.busyOverlay}>
-          <ActivityIndicator size="large" color="#367A57" />
+          <ActivityIndicator size="large" color="#485F6A" />
           <Text style={styles.busyTitle}>Saving your purchases...</Text>
           <Text style={styles.subtle}>
             Updating Pantry, history, and your grocery list.
           </Text>
         </View>
       )}
+      <Modal
+        visible={dialog !== null && !busy}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        onRequestClose={dismissDialog}
+      >
+        <View style={styles.dialogBackdrop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss message"
+            style={StyleSheet.absoluteFill}
+            onPress={dismissDialog}
+          />
+          {dialog && (
+            <View style={styles.dialogCard} accessibilityViewIsModal>
+              <View style={styles.dialogHandle} />
+              <View style={styles.dialogHeadingRow}>
+                <View
+                  style={[
+                    styles.dialogIcon,
+                    dialog.tone === "destructive" && styles.dialogIconDanger,
+                    dialog.tone === "success" && styles.dialogIconSuccess,
+                    dialog.tone === "warning" && styles.dialogIconWarning,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      dialog.tone === "success"
+                        ? "checkmark-circle-outline"
+                        : dialog.tone === "destructive"
+                          ? "trash-outline"
+                          : dialog.tone === "warning"
+                            ? "alert-circle-outline"
+                            : "basket-outline"
+                    }
+                    size={24}
+                    color={
+                      dialog.tone === "destructive"
+                        ? "#965D57"
+                        : dialog.tone === "warning"
+                          ? "#926C3D"
+                          : "#485F6A"
+                    }
+                  />
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  onPress={dismissDialog}
+                  style={styles.dialogClose}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close" color="#747571" size={20} />
+                </Pressable>
+              </View>
+              <Text style={styles.dialogEyebrow}>
+                {dialog.eyebrow ??
+                  (dialog.tone === "warning"
+                    ? "PLEASE REVIEW"
+                    : dialog.tone === "success"
+                      ? "PURCHASE RECORDED"
+                      : "KITCHENBUDDY")}
+              </Text>
+              <Text style={styles.dialogTitle}>{dialog.title}</Text>
+              <ScrollView
+                style={styles.dialogMessageScroll}
+                contentContainerStyle={styles.dialogMessageContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.dialogMessage}>{dialog.message}</Text>
+              </ScrollView>
+              <Pressable
+                accessibilityRole="button"
+                onPress={acceptDialog}
+                style={({ pressed }) => [
+                  styles.dialogPrimary,
+                  dialog.tone === "destructive" && styles.dialogPrimaryDanger,
+                  pressed && styles.dialogPressed,
+                ]}
+              >
+                <Text style={styles.dialogPrimaryText}>
+                  {dialog.confirmLabel ?? "Got it"}
+                </Text>
+                <Ionicons
+                  name={
+                    dialog.tone === "success"
+                      ? "arrow-forward"
+                      : dialog.tone === "destructive"
+                        ? "trash-outline"
+                        : "checkmark-outline"
+                  }
+                  color="#FFFEFB"
+                  size={17}
+                />
+              </Pressable>
+              {dialog.cancelLabel ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={dismissDialog}
+                  style={styles.dialogSecondary}
+                >
+                  <Text style={styles.dialogSecondaryText}>
+                    {dialog.cancelLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F7F8F6" },
+  root: { flex: 1, backgroundColor: "#F6F3EE" },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     paddingTop: 18,
     paddingBottom: 12,
     paddingHorizontal: 18,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFEFB",
     gap: 12,
   },
   back: {
@@ -1210,29 +1366,46 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#F0F3EF",
   },
-  topTitle: { flex: 1, fontSize: 19, fontWeight: "800", color: "#26392E" },
+  topTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontFamily: "serif",
+    fontWeight: "700",
+    color: "#292D2C",
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
   content: { padding: 16, paddingBottom: 55 },
   summary: {
     borderRadius: 19,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFEFB",
     padding: 19,
     marginBottom: 15,
     gap: 7,
   },
-  summaryTitle: { fontSize: 23, fontWeight: "800", color: "#26392E" },
-  subtle: { color: "#68746B", fontSize: 13, lineHeight: 19 },
+  summaryTitle: {
+    fontSize: 29,
+    lineHeight: 36,
+    fontFamily: "serif",
+    fontWeight: "700",
+    color: "#292D2C",
+  },
+  subtle: { color: "#747571", fontSize: 13, lineHeight: 19 },
   countRow: { flexDirection: "row", gap: 10, marginTop: 9 },
   countCard: {
     flex: 1,
     borderRadius: 13,
     padding: 13,
-    backgroundColor: "#EDF3EE",
+    backgroundColor: "#F1ECE5",
   },
-  countNumber: { fontSize: 24, fontWeight: "800", color: "#367A57" },
+  countNumber: {
+    fontSize: 27,
+    fontFamily: "serif",
+    fontWeight: "700",
+    color: "#485F6A",
+  },
   itemCard: {
     borderRadius: 18,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFEFB",
     padding: 15,
     marginBottom: 12,
   },
@@ -1246,7 +1419,7 @@ const styles = StyleSheet.create({
   placeholder: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#EDF3EC",
+    backgroundColor: "#E8E2DA",
   },
   imageButton: { width: 48, height: 48, position: "relative" },
   imageEditIcon: {
@@ -1255,39 +1428,39 @@ const styles = StyleSheet.create({
     bottom: -3,
     width: 18,
     height: 18,
-    backgroundColor: "#367A57",
+    backgroundColor: "#485F6A",
     borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#FFFFFF",
+    borderColor: "#FFFEFB",
   },
   changeImageText: {
-    color: "#367A57",
+    color: "#485F6A",
     fontSize: 12,
     fontWeight: "700",
     marginTop: 4,
   },
   imageEditor: {
-    backgroundColor: "#F4F8F3",
+    backgroundColor: "#F2EDE6",
     borderRadius: 13,
     padding: 12,
     gap: 8,
     marginBottom: 9,
   },
-  imageEditorTitle: { fontSize: 14, fontWeight: "700", color: "#26392E" },
+  imageEditorTitle: { fontSize: 14, fontWeight: "700", color: "#292D2C" },
   imageAction: {
     flexDirection: "row",
     gap: 9,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFEFB",
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#D6E0D6",
+    borderColor: "#E9E5DE",
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  imageActionText: { fontSize: 13, fontWeight: "700", color: "#367A57" },
+  imageActionText: { fontSize: 13, fontWeight: "700", color: "#485F6A" },
   imageBusy: {
     flexDirection: "row",
     alignItems: "center",
@@ -1295,86 +1468,200 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   imageCancel: { paddingVertical: 6, alignItems: "center" },
-  name: { fontSize: 16, fontWeight: "700", color: "#26392E" },
+  name: { fontSize: 16, fontWeight: "700", color: "#292D2C" },
   label: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#506455",
+    color: "#586D77",
     marginBottom: 5,
     marginTop: 9,
   },
   input: {
     borderRadius: 11,
     borderWidth: 1,
-    borderColor: "#E1E8E1",
-    backgroundColor: "#FAFCFA",
+    borderColor: "#E9E5DE",
+    backgroundColor: "#FFFEFB",
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
-    color: "#26392E",
+    color: "#292D2C",
   },
   categoryButton: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#E1E8E1",
+    borderColor: "#E9E5DE",
     borderRadius: 11,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  categoryText: { fontSize: 13, color: "#26392E" },
+  categoryText: { fontSize: 13, color: "#292D2C" },
   categoryChoices: { paddingTop: 6, gap: 5 },
-  categoryChoice: { borderRadius: 8, padding: 10, backgroundColor: "#F4F7F3" },
-  selectedChoice: { backgroundColor: "#DDEADD" },
+  categoryChoice: { borderRadius: 8, padding: 10, backgroundColor: "#F2EDE6" },
+  selectedChoice: { backgroundColor: "#E8E2DA" },
   expiryRow: { flexDirection: "row", gap: 6, marginBottom: 4 },
   expiryChip: {
     flex: 1,
     borderRadius: 10,
     paddingHorizontal: 7,
     paddingVertical: 9,
-    backgroundColor: "#EFF2EE",
+    backgroundColor: "#F2EDE6",
     alignItems: "center",
   },
-  expiryActive: { backgroundColor: "#367A57" },
-  expiryText: { fontSize: 12, color: "#536A59", fontWeight: "700" },
-  expiryActiveText: { color: "#FFFFFF" },
-  hint: { color: "#79867C", fontSize: 12, marginTop: 8 },
+  expiryActive: { backgroundColor: "#485F6A" },
+  expiryText: { fontSize: 12, color: "#586D77", fontWeight: "700" },
+  expiryActiveText: { color: "#FFFEFB" },
+  hint: { color: "#747571", fontSize: 12, marginTop: 8 },
   actions: { gap: 10, marginTop: 7 },
   primary: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    backgroundColor: "#367A57",
+    backgroundColor: "#485F6A",
     borderRadius: 14,
     paddingVertical: 15,
   },
-  primaryText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  primaryText: { color: "#FFFEFB", fontSize: 15, fontWeight: "800" },
   secondary: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#D6E0D6",
+    borderColor: "#E9E5DE",
     alignItems: "center",
     paddingVertical: 14,
   },
-  secondaryText: { color: "#536A59", fontWeight: "700", fontSize: 13 },
+  secondaryText: { color: "#586D77", fontWeight: "700", fontSize: 13 },
   backLink: { alignItems: "center", paddingVertical: 16 },
   footerNote: {
     textAlign: "center",
     marginTop: 3,
     fontSize: 12,
     lineHeight: 17,
-    color: "#87928A",
+    color: "#747571",
   },
   disabled: { opacity: 0.5 },
   busyOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(248,250,247,0.96)",
+    backgroundColor: "rgba(246,243,238,0.96)",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
     padding: 24,
   },
-  busyTitle: { fontSize: 20, fontWeight: "800", color: "#26392E" },
+  busyTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    fontFamily: "serif",
+    color: "#292D2C",
+  },
+  summaryIcon: {
+    width: 47,
+    height: 47,
+    borderRadius: 15,
+    backgroundColor: "#586D77",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  summaryEyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    color: "#586D77",
+    marginTop: 2,
+  },
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(28,34,34,0.48)",
+    justifyContent: "flex-end",
+  },
+  dialogCard: {
+    backgroundColor: "#FFFEFB",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 23,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === "ios" ? 38 : 25,
+    borderWidth: 1,
+    borderColor: "#E9E5DE",
+    shadowColor: "#292D2C",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.11,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  dialogHandle: {
+    width: 39,
+    height: 4,
+    borderRadius: 6,
+    backgroundColor: "#D9D5CF",
+    alignSelf: "center",
+    marginBottom: 23,
+  },
+  dialogHeadingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  dialogIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: "#E8E2DA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogIconDanger: { backgroundColor: "#F7EDE9" },
+  dialogIconSuccess: { backgroundColor: "#E6EDEB" },
+  dialogIconWarning: { backgroundColor: "#F7F0E5" },
+  dialogClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "#F2EDE6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogEyebrow: {
+    color: "#586D77",
+    fontSize: 10,
+    letterSpacing: 1.65,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  dialogTitle: {
+    fontFamily: "serif",
+    fontWeight: "700",
+    color: "#292D2C",
+    fontSize: 27,
+    lineHeight: 34,
+    marginBottom: 10,
+  },
+  dialogMessageScroll: { flexGrow: 0, maxHeight: 220, marginBottom: 25 },
+  dialogMessageContent: { flexGrow: 0 },
+  dialogMessage: { fontSize: 13, color: "#747571", lineHeight: 21 },
+  dialogPrimary: {
+    minHeight: 51,
+    borderRadius: 14,
+    backgroundColor: "#485F6A",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  dialogPrimaryDanger: { backgroundColor: "#965D57" },
+  dialogPrimaryText: { color: "#FFFEFB", fontSize: 14, fontWeight: "800" },
+  dialogSecondary: {
+    minHeight: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 8,
+    borderRadius: 13,
+    backgroundColor: "#F2EDE6",
+  },
+  dialogSecondaryText: { color: "#485F6A", fontWeight: "700", fontSize: 13 },
+  dialogPressed: { opacity: 0.78 },
 });

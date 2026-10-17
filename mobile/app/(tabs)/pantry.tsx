@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Modal,
   Pressable,
   TextInput,
   StyleSheet,
@@ -63,6 +64,11 @@ type ExpiringRow = PantryItem & {
 
 type Category = (typeof CATEGORIES)[number];
 
+type MenuCategory =
+  | { type: "normal"; cat: Category }
+  | { type: "expired" }
+  | { type: "expiring" };
+
 function buildEmptyPantry(): Record<CategoryKey, PantryItem[]> {
   return ALL_CATEGORY_KEYS.reduce(
     (acc, k) => {
@@ -89,6 +95,10 @@ export default function PantryScreen() {
   const [bulkExpiryOpen, setBulkExpiryOpen] = useState(false);
 
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+
+  const [categoryMenu, setCategoryMenu] = useState<MenuCategory | null>(null);
+  const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
+  const [confirmCategoryAction, setConfirmCategoryAction] = useState(false);
 
   const pantry = usePantryStore((s) => s.pantry);
 
@@ -608,44 +618,25 @@ export default function PantryScreen() {
     }
   };
 
-  const deleteAllExpired = () => {
-    Alert.alert(
-      "Delete all expired?",
+  // This preserves the original behavior: when searching, the Expired section
+  // operates on its currently displayed (filtered) items.
+  const performDeleteExpired = () => {
+    const itemsToExpire = [...expiredItems];
+    if (itemsToExpire.length === 0) return;
 
-      "This will permanently remove all expired items.",
+    setPantry((prev) => {
+      const next = { ...prev };
+      for (const item of itemsToExpire) {
+        next[item.categoryKey] = next[item.categoryKey].filter(
+          (row) => row.id !== item.id,
+        );
+      }
+      return next;
+    });
 
-      [
-        { text: "Cancel", style: "cancel" },
-
-        {
-          text: "Delete",
-
-          style: "destructive",
-
-          onPress: () => {
-            // Capture the expired items before removing them
-            const itemsToExpire = [...expiredItems];
-
-            setPantry((prev) => {
-              const next = { ...prev };
-
-              itemsToExpire.forEach((item) => {
-                next[item.categoryKey] = next[item.categoryKey].filter(
-                  (i) => i.id !== item.id,
-                );
-              });
-
-              return next;
-            });
-
-            // Record each removed item as expired for history/analytics
-            for (const item of itemsToExpire) {
-              void appendPantryHistory(item, "expired");
-            }
-          },
-        },
-      ],
-    );
+    for (const item of itemsToExpire) {
+      void appendPantryHistory(item, "expired");
+    }
   };
 
   const remindLater = () => {
@@ -674,63 +665,44 @@ export default function PantryScreen() {
     applyToSelected((it) => it, dest);
   };
 
-  type MenuCategory =
-    | { type: "normal"; cat: Category }
-    | { type: "expired" }
-    | { type: "expiring" };
-
   const showCategoryMenu = (menu: MenuCategory) => {
-    if (menu.type === "normal") {
-      const { cat } = menu;
+    void Haptics.selectionAsync();
+    setConfirmCategoryAction(false);
+    setCategoryMenu(menu);
+    setCategoryMenuVisible(true);
+  };
 
-      Alert.alert(cat.label, "Category options", [
-        {
-          text: "Clear category (remove all items)",
+  const closeCategoryMenu = () => {
+    // Keep the sheet contents mounted until the closing slide completes.
+    setCategoryMenuVisible(false);
+  };
 
-          style: "destructive",
-
-          onPress: () => {
-            const removedItems = [...pantry[cat.key]];
-
-            setPantry((prev) => ({
-              ...prev,
-
-              [cat.key]: [],
-            }));
-
-            for (const item of removedItems) {
-              void appendPantryHistory(item, "removed");
-            }
-          },
-        },
-
-        { text: "Cancel", style: "cancel" },
-      ]);
-
+  const handleCategoryMenuAction = () => {
+    if (!categoryMenu) return;
+    if (categoryMenu.type === "expiring") {
+      remindLater();
+      closeCategoryMenu();
       return;
     }
+    setConfirmCategoryAction(true);
+  };
 
-    if (menu.type === "expired") {
-      Alert.alert("Expired", "Category options", [
-        {
-          text: "Delete all expired",
-
-          style: "destructive",
-
-          onPress: deleteAllExpired,
-        },
-
-        { text: "Cancel", style: "cancel" },
-      ]);
-
-      return;
+  const confirmCategoryMenuAction = () => {
+    if (!categoryMenu) return;
+    if (categoryMenu.type === "normal") {
+      const key = categoryMenu.cat.key;
+      const removedItems = [...pantry[key]];
+      if (removedItems.length > 0) {
+        setPantry((prev) => ({ ...prev, [key]: [] }));
+        for (const item of removedItems) {
+          void appendPantryHistory(item, "removed");
+        }
+      }
+    } else if (categoryMenu.type === "expired") {
+      performDeleteExpired();
     }
-
-    Alert.alert("Expiring soon", "Category options", [
-      { text: "Remind later (+3 days)", onPress: remindLater },
-
-      { text: "Cancel", style: "cancel" },
-    ]);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    closeCategoryMenu();
   };
 
   // ✅ Expired filtered by search
@@ -834,6 +806,27 @@ export default function PantryScreen() {
       sum + pantry[categoryKey].filter((item) => matchesQuery(item, q)).length,
     0,
   );
+
+  const categoryMenuCount =
+    categoryMenu?.type === "normal"
+      ? pantry[categoryMenu.cat.key].length
+      : categoryMenu?.type === "expired"
+        ? expiredItems.length
+        : expiringSoon.length;
+
+  const categoryMenuTitle =
+    categoryMenu?.type === "normal"
+      ? categoryMenu.cat.label
+      : categoryMenu?.type === "expired"
+        ? "Expired items"
+        : "Expiring soon";
+
+  const categoryMenuIcon: React.ComponentProps<typeof Ionicons>["name"] =
+    categoryMenu?.type === "normal"
+      ? categoryMenu.cat.icon
+      : categoryMenu?.type === "expired"
+        ? "time-outline"
+        : "alarm-outline";
 
   return (
     <View style={styles.screen}>
@@ -1312,6 +1305,201 @@ export default function PantryScreen() {
         </View>
       )}
 
+      <Modal
+        visible={categoryMenuVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeCategoryMenu}
+        statusBarTranslucent
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeCategoryMenu}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss category options"
+          />
+          {categoryMenu && (
+            <View style={styles.menuSheet}>
+              <View style={styles.menuGrabber} />
+              <View style={styles.menuHeadingRow}>
+                <View style={styles.menuTitleIcon}>
+                  <Ionicons
+                    name={categoryMenuIcon}
+                    size={22}
+                    color={PALETTE.slateDark}
+                  />
+                </View>
+                <View style={styles.menuHeadingCopy}>
+                  <Text style={styles.menuEyebrow}>
+                    {confirmCategoryAction
+                      ? "PLEASE CONFIRM"
+                      : "PANTRY OPTIONS"}
+                  </Text>
+                  <Text style={styles.menuTitle} numberOfLines={2}>
+                    {confirmCategoryAction
+                      ? categoryMenu.type === "normal"
+                        ? "Clear this category?"
+                        : "Delete expired items?"
+                      : categoryMenuTitle}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={closeCategoryMenu}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close category options"
+                  style={styles.menuClose}
+                >
+                  <Ionicons name="close" size={19} color={PALETTE.slateDark} />
+                </Pressable>
+              </View>
+
+              <View style={styles.menuInfoRow}>
+                <Ionicons
+                  name="layers-outline"
+                  size={16}
+                  color={PALETTE.slate}
+                />
+                <Text style={styles.menuInfoText}>
+                  {categoryMenuCount}{" "}
+                  {categoryMenuCount === 1 ? "item" : "items"}
+                  {categoryMenu.type !== "normal" && isSearching
+                    ? " matching your search"
+                    : ""}
+                </Text>
+              </View>
+
+              {confirmCategoryAction ? (
+                <>
+                  <View style={styles.menuWarningBox}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={21}
+                      color={PALETTE.expired}
+                    />
+                    <Text style={styles.menuWarningText}>
+                      {categoryMenu.type === "normal"
+                        ? `Remove all ${categoryMenuCount} ${categoryMenuCount === 1 ? "item" : "items"} from ${categoryMenu.cat.label}? Each removal will be recorded in Pantry History.`
+                        : `Remove ${categoryMenuCount} expired ${categoryMenuCount === 1 ? "item" : "items"}${isSearching ? " matching your search" : ""}? Each will be recorded as expired in Pantry History.`}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={confirmCategoryMenuAction}
+                    style={({ pressed }) => [
+                      styles.menuPrimaryDanger,
+                      pressed && styles.menuPressed,
+                    ]}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={PALETTE.paper}
+                    />
+                    <Text style={styles.menuPrimaryDangerText}>
+                      {categoryMenu.type === "normal"
+                        ? "Yes, clear category"
+                        : "Yes, delete expired"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setConfirmCategoryAction(false)}
+                    style={styles.menuCancel}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.menuCancelText}>Go back</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.menuDescription}>
+                    {categoryMenu.type === "normal"
+                      ? "Manage all the items stored in this category."
+                      : categoryMenu.type === "expired"
+                        ? "Review or remove the expired items shown in your pantry."
+                        : "Give these ingredients a little more time before they expire."}
+                  </Text>
+                  <Pressable
+                    disabled={categoryMenuCount === 0}
+                    onPress={handleCategoryMenuAction}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: categoryMenuCount === 0 }}
+                    style={({ pressed }) => [
+                      styles.menuOption,
+                      categoryMenu.type === "expiring"
+                        ? styles.menuOptionNeutral
+                        : styles.menuOptionDanger,
+                      categoryMenuCount === 0 && styles.menuOptionDisabled,
+                      pressed && styles.menuPressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.menuOptionIcon,
+                        categoryMenu.type === "expiring"
+                          ? styles.menuOptionIconNeutral
+                          : styles.menuOptionIconDanger,
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          categoryMenu.type === "expiring"
+                            ? "calendar-outline"
+                            : "trash-outline"
+                        }
+                        size={21}
+                        color={
+                          categoryMenu.type === "expiring"
+                            ? PALETTE.slateDark
+                            : PALETTE.expired
+                        }
+                      />
+                    </View>
+                    <View style={styles.menuOptionCopy}>
+                      <Text
+                        style={[
+                          styles.menuOptionTitle,
+                          categoryMenu.type !== "expiring" &&
+                            styles.menuDangerText,
+                        ]}
+                      >
+                        {categoryMenu.type === "normal"
+                          ? "Clear category"
+                          : categoryMenu.type === "expired"
+                            ? isSearching
+                              ? "Delete matching expired"
+                              : "Delete all expired"
+                            : "Remind me later"}
+                      </Text>
+                      <Text style={styles.menuOptionSubtitle}>
+                        {categoryMenu.type === "normal"
+                          ? "Remove every item in this category"
+                          : categoryMenu.type === "expired"
+                            ? "Record these items as expired"
+                            : "Add 3 days to the displayed items"}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={PALETTE.muted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={closeCategoryMenu}
+                    style={styles.menuCancel}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.menuCancelText}>Cancel</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
+        </View>
+      </Modal>
+
       <BulkExpirySheet
         open={bulkExpiryOpen}
         onClose={() => setBulkExpiryOpen(false)}
@@ -1675,4 +1863,158 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
+  menuOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(28,35,37,0.44)",
+  },
+  menuSheet: {
+    backgroundColor: PALETTE.paper,
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    paddingHorizontal: 21,
+    paddingTop: 11,
+    paddingBottom: 34,
+    shadowColor: "#000",
+    shadowOpacity: 0.13,
+    shadowRadius: 20,
+    elevation: 16,
+  },
+  menuGrabber: {
+    width: 40,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: "#D9D5CF",
+    alignSelf: "center",
+    marginBottom: 19,
+  },
+  menuHeadingRow: { flexDirection: "row", alignItems: "center", gap: 11 },
+  menuTitleIcon: {
+    width: 45,
+    height: 45,
+    borderRadius: 14,
+    backgroundColor: "#F1ECE5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuHeadingCopy: { flex: 1, minWidth: 0 },
+  menuEyebrow: {
+    fontSize: 9,
+    color: PALETTE.slate,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    marginBottom: 4,
+  },
+  menuTitle: {
+    color: PALETTE.ink,
+    fontFamily: "serif",
+    fontSize: 23,
+    fontWeight: "600",
+    lineHeight: 29,
+  },
+  menuClose: {
+    width: 35,
+    height: 35,
+    borderRadius: 12,
+    backgroundColor: PALETTE.bg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 18,
+    paddingHorizontal: 12,
+    minHeight: 38,
+    borderRadius: 11,
+    backgroundColor: "#F2EDE6",
+    alignSelf: "flex-start",
+  },
+  menuInfoText: { color: PALETTE.slateDark, fontSize: 12, fontWeight: "700" },
+  menuDescription: {
+    color: PALETTE.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 16,
+    marginBottom: 18,
+  },
+  menuOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    minHeight: 76,
+  },
+  menuOptionDanger: { backgroundColor: "#FCF5F2", borderColor: "#EFDEDA" },
+  menuOptionNeutral: {
+    backgroundColor: "#F7F7F3",
+    borderColor: PALETTE.border,
+  },
+  menuOptionDisabled: { opacity: 0.45 },
+  menuOptionIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  menuOptionIconDanger: { backgroundColor: "#F3E5E0" },
+  menuOptionIconNeutral: { backgroundColor: PALETTE.taupe },
+  menuOptionCopy: { flex: 1, minWidth: 0 },
+  menuOptionTitle: { color: PALETTE.ink, fontWeight: "700", fontSize: 14 },
+  menuDangerText: { color: PALETTE.expired },
+  menuOptionSubtitle: {
+    color: PALETTE.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  menuWarningBox: {
+    marginTop: 19,
+    marginBottom: 19,
+    backgroundColor: "#FCF5F2",
+    borderColor: "#EFDEDA",
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 15,
+    flexDirection: "row",
+    gap: 11,
+    alignItems: "flex-start",
+  },
+  menuWarningText: {
+    color: PALETTE.ink,
+    fontSize: 13,
+    lineHeight: 20,
+    flex: 1,
+  },
+  menuPrimaryDanger: {
+    backgroundColor: PALETTE.expired,
+    borderRadius: 13,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 9,
+  },
+  menuPrimaryDangerText: {
+    color: PALETTE.paper,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  menuCancel: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: PALETTE.border,
+    borderRadius: 13,
+    marginTop: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: PALETTE.paper,
+  },
+  menuCancelText: { color: PALETTE.slateDark, fontSize: 13, fontWeight: "700" },
+  menuPressed: { opacity: 0.75 },
 });
