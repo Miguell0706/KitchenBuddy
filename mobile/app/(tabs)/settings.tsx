@@ -6,7 +6,7 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -24,6 +24,7 @@ import DateTimePicker, {
 import {
   loadReminderSettings,
   saveReminderSettings,
+  defaultReminderSettings,
   type ReminderSettings,
 } from "@/features/reminders/reminderStorage";
 import {
@@ -34,6 +35,10 @@ import {
   scheduleExpiryReminders,
   cancelExpiryReminders,
 } from "@/features/reminders/expiryReminders";
+import {
+  expiryReminderCopy,
+  waterReminderCopy,
+} from "@/features/reminders/notificationContent";
 
 const P = {
   ivory: "#F5F2EC",
@@ -57,14 +62,7 @@ type AppIcon = keyof typeof Ionicons.glyphMap;
 type ExpiryLead = ReminderSettings["expiryLead"];
 type WaterCadence = ReminderSettings["waterCadence"];
 
-const INITIAL: ReminderSettings = {
-  expiryReminders: true,
-  expiryLead: "1d",
-  waterReminders: false,
-  waterCadence: "3h",
-  waterStartMinutes: 9 * 60,
-  waterEndMinutes: 21 * 60,
-};
+const INITIAL: ReminderSettings = { ...defaultReminderSettings };
 function minutesToDate(minutes: number): Date {
   const date = new Date();
   date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
@@ -202,6 +200,11 @@ export default function SettingsScreen() {
   const [updating, setUpdating] = useState(false);
   const [showIOSStartPicker, setShowIOSStartPicker] = useState(false);
   const [showIOSEndPicker, setShowIOSEndPicker] = useState(false);
+  const [showIOSExpiryPicker, setShowIOSExpiryPicker] = useState(false);
+  const [iosExpiryDraft, setIOSExpiryDraft] = useState<Date | null>(null);
+  const [notice, setNotice] = useState<{ title: string; body: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     let active = true;
@@ -215,10 +218,10 @@ export default function SettingsScreen() {
       } catch (error) {
         console.warn("Could not load reminder settings", error);
         if (active)
-          Alert.alert(
-            "Settings unavailable",
-            "Your reminder preferences could not be loaded. Please try reopening Settings.",
-          );
+          setNotice({
+            title: "Settings unavailable",
+            body: "Your reminder preferences could not be loaded. Please try reopening Settings.",
+          });
       } finally {
         if (active) setLoaded(true);
       }
@@ -237,37 +240,38 @@ export default function SettingsScreen() {
     settingsRef.current = updated;
     setSettings(updated);
     try {
-      await saveReminderSettings(updated);
+      try {
+        await saveReminderSettings(updated);
+      } catch (error) {
+        settingsRef.current = previous;
+        setSettings(previous);
+        throw new Error(
+          "Your reminder settings couldn't be saved. Please try again.",
+        );
+      }
       const waterChanged =
         "waterReminders" in changes ||
         "waterCadence" in changes ||
         "waterStartMinutes" in changes ||
-        "waterEndMinutes" in changes;
+        "waterEndMinutes" in changes ||
+        "waterSound" in changes;
       const expiryChanged =
-        "expiryReminders" in changes || "expiryLead" in changes;
-      if (waterChanged) {
-        if (updated.waterReminders) await scheduleWaterReminders(updated);
-        else await cancelWaterReminders();
-      }
-      if (expiryChanged) {
-        if (updated.expiryReminders) await scheduleExpiryReminders(updated);
-        else await cancelExpiryReminders();
-      }
+        "expiryReminders" in changes ||
+        "expiryLead" in changes ||
+        "expiryTimeMinutes" in changes ||
+        "expirySound" in changes;
+      // The schedulers serialize their own changes, including disabling and snoozes.
+      if (waterChanged) await scheduleWaterReminders(updated);
+      if (expiryChanged) await scheduleExpiryReminders(updated);
     } catch (error) {
-      console.warn("Unable to update reminder settings", error);
-      // Reload the saved settings; scheduling can fail after the storage write.
-      try {
-        const latest = await loadReminderSettings();
-        settingsRef.current = latest;
-        setSettings(latest);
-      } catch {
-        settingsRef.current = previous;
-        setSettings(previous);
-      }
-      Alert.alert(
-        "Reminder update failed",
-        "Please check notification permissions and try again.",
-      );
+      console.warn("Unable to save or reschedule reminder settings", error);
+      setNotice({
+        title: "Reminder update needs attention",
+        body:
+          error instanceof Error
+            ? error.message
+            : "Please check notification permissions and try again.",
+      });
     } finally {
       updatingRef.current = false;
       setUpdating(false);
@@ -278,10 +282,10 @@ export default function SettingsScreen() {
     if (!date) return;
     const start = dateToMinutes(date);
     if (start >= settingsRef.current.waterEndMinutes) {
-      Alert.alert(
-        "Invalid reminder window",
-        "The start time must be earlier than the end time.",
-      );
+      setNotice({
+        title: "Invalid reminder window",
+        body: "The start time must be earlier than the end time.",
+      });
       return;
     }
     await updateReminderSettings({ waterStartMinutes: start });
@@ -290,10 +294,10 @@ export default function SettingsScreen() {
     if (!date) return;
     const end = dateToMinutes(date);
     if (end <= settingsRef.current.waterStartMinutes) {
-      Alert.alert(
-        "Invalid reminder window",
-        "The end time must be later than the start time.",
-      );
+      setNotice({
+        title: "Invalid reminder window",
+        body: "The end time must be later than the start time.",
+      });
       return;
     }
     await updateReminderSettings({ waterEndMinutes: end });
@@ -324,6 +328,31 @@ export default function SettingsScreen() {
       });
     } else setShowIOSEndPicker(true);
   }
+  async function selectExpiryTime(date?: Date) {
+    if (date)
+      await updateReminderSettings({ expiryTimeMinutes: dateToMinutes(date) });
+  }
+  function openExpiryTimePicker() {
+    if (!loaded || updating) return;
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: minutesToDate(settings.expiryTimeMinutes),
+        mode: "time",
+        is24Hour: false,
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (event.type === "set") void selectExpiryTime(date);
+        },
+      });
+    } else {
+      setIOSExpiryDraft(minutesToDate(settings.expiryTimeMinutes));
+      setShowIOSExpiryPicker(true);
+    }
+  }
+  const expiryPreview = expiryReminderCopy(
+    { name: "Spinach" },
+    Number(settings.expiryLead[0]),
+  );
+  const waterPreview = waterReminderCopy(0);
   const expirySubtitle = settings.expiryReminders
     ? `Notify me ${settings.expiryLead === "3d" ? "3 days" : settings.expiryLead === "2d" ? "2 days" : "1 day"} before expiry`
     : "Get reminded before food expires";
@@ -444,6 +473,84 @@ export default function SettingsScreen() {
                   })
                 }
               />
+              <Text style={[styles.optionsLabel, { marginTop: 12 }]}>
+                DELIVERY
+              </Text>
+              <SettingRow
+                icon="time-outline"
+                title="Reminder time"
+                subtitle="When expiry alerts arrive"
+                disabled={disabled}
+                onPress={openExpiryTimePicker}
+                right={
+                  <View style={styles.timeRight}>
+                    <Text style={styles.timeValue}>
+                      {formatTime(settings.expiryTimeMinutes)}
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={P.muted}
+                    />
+                  </View>
+                }
+              />
+              {Platform.OS === "ios" && showIOSExpiryPicker ? (
+                <View style={styles.iosPicker}>
+                  <DateTimePicker
+                    value={
+                      iosExpiryDraft ??
+                      minutesToDate(settings.expiryTimeMinutes)
+                    }
+                    mode="time"
+                    display="spinner"
+                    onChange={(_event: DateTimePickerEvent, date?: Date) => {
+                      if (date) setIOSExpiryDraft(date);
+                    }}
+                  />
+                  <Pressable
+                    onPress={() => {
+                      setShowIOSExpiryPicker(false);
+                      void selectExpiryTime(iosExpiryDraft ?? undefined);
+                    }}
+                    style={styles.pickerDone}
+                  >
+                    <Text style={styles.pickerDoneText}>Done</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              <SettingRow
+                icon="volume-medium-outline"
+                title="Expiry notification sound"
+                subtitle="Use the phone's default alert tone"
+                right={
+                  <Switch
+                    accessibilityLabel="Expiry notification sound"
+                    value={settings.expirySound}
+                    disabled={disabled}
+                    onValueChange={(value) =>
+                      void updateReminderSettings({ expirySound: value })
+                    }
+                    trackColor={{ false: "#D7D4D0", true: P.slate }}
+                    thumbColor={P.white}
+                    ios_backgroundColor="#D7D4D0"
+                  />
+                }
+              />
+              <View style={styles.previewBox}>
+                <Text style={styles.previewEyebrow}>NOTIFICATION PREVIEW</Text>
+                <View style={styles.previewTop}>
+                  <Ionicons name="leaf-outline" size={17} color={P.deepSlate} />
+                  <Text style={styles.previewApp}>
+                    KITCHENBUDDY · FOOD EXPIRY
+                  </Text>
+                </View>
+                <Text style={styles.previewTitle}>{expiryPreview.title}</Text>
+                <Text style={styles.previewBody}>{expiryPreview.body}</Text>
+                <Text style={styles.previewAction}>
+                  VIEW PANTRY · FIND RECIPES · REMIND TOMORROW
+                </Text>
+              </View>
             </View>
           ) : null}
           <View style={styles.hairline} />
@@ -580,6 +687,40 @@ export default function SettingsScreen() {
                   </Pressable>
                 </View>
               ) : null}
+              <SettingRow
+                icon="volume-medium-outline"
+                title="Water notification sound"
+                subtitle="Use the phone's default alert tone"
+                right={
+                  <Switch
+                    accessibilityLabel="Water notification sound"
+                    value={settings.waterSound}
+                    disabled={disabled}
+                    onValueChange={(value) =>
+                      void updateReminderSettings({ waterSound: value })
+                    }
+                    trackColor={{ false: "#D7D4D0", true: P.slate }}
+                    thumbColor={P.white}
+                    ios_backgroundColor="#D7D4D0"
+                  />
+                }
+              />
+              <View style={styles.previewBox}>
+                <Text style={styles.previewEyebrow}>NOTIFICATION PREVIEW</Text>
+                <View style={styles.previewTop}>
+                  <Ionicons
+                    name="water-outline"
+                    size={17}
+                    color={P.deepSlate}
+                  />
+                  <Text style={styles.previewApp}>
+                    KITCHENBUDDY · WATER REMINDER
+                  </Text>
+                </View>
+                <Text style={styles.previewTitle}>{waterPreview.title}</Text>
+                <Text style={styles.previewBody}>{waterPreview.body}</Text>
+                <Text style={styles.previewAction}>DONE · IN 30 MINUTES</Text>
+              </View>
             </View>
           ) : null}
         </View>
@@ -671,10 +812,10 @@ export default function SettingsScreen() {
             title="Restore purchase"
             subtitle="Restore a previous subscription"
             onPress={() =>
-              Alert.alert(
-                "Restore Purchase",
-                "Premium subscriptions are not available yet.",
-              )
+              setNotice({
+                title: "Restore Purchase",
+                body: "Premium subscriptions are not available yet.",
+              })
             }
           />
           <SettingRow
@@ -697,6 +838,39 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </ScrollView>
+      <Modal
+        visible={!!notice}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setNotice(null)}
+      >
+        <View style={styles.modalShade}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setNotice(null)}
+            accessibilityLabel="Dismiss notice"
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalIcon}>
+              <Ionicons
+                name="information-circle-outline"
+                size={24}
+                color={P.deepSlate}
+              />
+            </View>
+            <Text style={styles.modalTitle}>{notice?.title}</Text>
+            <Text style={styles.modalBody}>{notice?.body}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setNotice(null)}
+              style={styles.modalButton}
+            >
+              <Text style={styles.modalButtonText}>Got it</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -947,4 +1121,99 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: P.brown,
   },
+  previewBox: {
+    backgroundColor: "#F4F3EE",
+    borderColor: P.line,
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 15,
+    marginTop: 6,
+    marginBottom: 13,
+  },
+  previewEyebrow: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    color: P.brown,
+    marginBottom: 12,
+  },
+  previewTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginBottom: 10,
+  },
+  previewApp: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.7,
+    color: P.deepSlate,
+    flexShrink: 1,
+  },
+  previewTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: P.charcoal,
+    marginBottom: 5,
+  },
+  previewBody: { fontSize: 12, lineHeight: 18, color: P.muted },
+  previewAction: {
+    fontSize: 9,
+    letterSpacing: 0.7,
+    fontWeight: "700",
+    color: P.deepSlate,
+    marginTop: 14,
+  },
+  modalShade: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(27,33,35,.43)",
+  },
+  modalSheet: {
+    backgroundColor: P.white,
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 38,
+    alignItems: "center",
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: P.fog,
+    marginBottom: 21,
+  },
+  modalIcon: {
+    backgroundColor: "#E8EBEA",
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 13,
+  },
+  modalTitle: {
+    fontFamily: SERIF,
+    fontSize: 25,
+    color: P.charcoal,
+    textAlign: "center",
+  },
+  modalBody: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: P.muted,
+    textAlign: "center",
+    marginTop: 10,
+    marginBottom: 22,
+  },
+  modalButton: {
+    width: "100%",
+    backgroundColor: P.deepSlate,
+    borderRadius: 13,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  modalButtonText: { color: P.white, fontWeight: "800", fontSize: 13 },
 });

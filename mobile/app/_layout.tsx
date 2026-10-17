@@ -9,11 +9,14 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import Toast from "react-native-toast-message";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useSettingsStore } from "@/features/settings/store"; // 👈 import settings store
+
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useSettingsStore } from "@/features/settings/store";
 import { toastConfig } from "@/components/kitchentoast";
 import { PremiumProvider } from "@/context/PremiumContext";
+import NotificationBootstrap from "@/components/NotificationBootstrap";
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -34,12 +37,10 @@ if (__DEV__) {
       await AsyncStorage.removeItem("pantry_items_v1");
       console.log("pantry_items_v1 removed");
     },
-
     async clearAll() {
       const AsyncStorage = (
         await import("@react-native-async-storage/async-storage")
       ).default;
-
       await AsyncStorage.clear();
       console.log("🔥 AsyncStorage fully cleared");
     },
@@ -48,8 +49,6 @@ if (__DEV__) {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-
-  // 👇 hydrate settings once at app startup
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
 
   useEffect(() => {
@@ -79,6 +78,9 @@ export default function RootLayout() {
               }}
             />
           </Stack>
+
+          {/* Initialize KitchenBuddy notifications once at app startup */}
+          <NotificationBootstrap />
 
           <StatusBar style="auto" />
 
