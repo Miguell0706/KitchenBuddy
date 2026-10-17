@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import {
-  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +29,7 @@ const C = {
 
 export default function AboutScreen() {
   const router = useRouter();
+  const [acknowledgementsVisible, setAcknowledgementsVisible] = useState(false);
 
   return (
     <>
@@ -187,12 +188,7 @@ export default function AboutScreen() {
                 icon="heart-outline"
                 title="Acknowledgements"
                 subtitle="Services and technology used by KitchenBuddy"
-                onPress={() =>
-                  Alert.alert(
-                    "Acknowledgements",
-                    "KitchenBuddy uses third-party services and open-source software to provide certain features.\n\nA complete acknowledgements list will be added before release.",
-                  )
-                }
+                onPress={() => setAcknowledgementsVisible(true)}
               />
             </View>
           </View>
@@ -212,6 +208,65 @@ export default function AboutScreen() {
           <Text style={styles.footer}>Made with care · KitchenBuddy v0.1</Text>
         </ScrollView>
       </View>
+
+      <Modal
+        visible={acknowledgementsVisible}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setAcknowledgementsVisible(false)}
+      >
+        <View style={styles.dialogRoot}>
+          <Pressable
+            style={styles.dialogScrim}
+            onPress={() => setAcknowledgementsVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close acknowledgements"
+          />
+          <View style={styles.dialogSheet}>
+            <View style={styles.dialogGrabber} />
+            <View style={styles.dialogHeader}>
+              <View style={styles.dialogIcon}>
+                <Ionicons name="heart-outline" size={23} color={C.slateDark} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close acknowledgements"
+                onPress={() => setAcknowledgementsVisible(false)}
+                style={styles.dialogClose}
+              >
+                <Ionicons name="close" size={20} color={C.muted} />
+              </Pressable>
+            </View>
+            <Text style={styles.dialogEyebrow}>WITH APPRECIATION</Text>
+            <Text style={styles.dialogTitle}>Acknowledgements</Text>
+            <Text style={styles.dialogDescription}>
+              KitchenBuddy uses third-party services and open-source software to
+              provide certain features.
+            </Text>
+            <View style={styles.dialogNotice}>
+              <Ionicons
+                name="information-circle-outline"
+                size={19}
+                color={C.slate}
+              />
+              <Text style={styles.dialogNoticeText}>
+                A complete acknowledgements list will be added before release.
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setAcknowledgementsVisible(false)}
+              style={({ pressed }) => [
+                styles.dialogButton,
+                pressed && styles.rowPressed,
+              ]}
+            >
+              <Text style={styles.dialogButtonText}>Got it</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -419,4 +474,91 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.5,
   },
+  dialogRoot: { flex: 1, justifyContent: "flex-end" },
+  dialogScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(28,36,38,0.48)",
+  },
+  dialogSheet: {
+    backgroundColor: C.paper,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 23,
+    paddingTop: 11,
+    paddingBottom: 34,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  dialogGrabber: {
+    width: 39,
+    height: 4,
+    borderRadius: 3,
+    backgroundColor: C.taupe,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  dialogHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 19,
+  },
+  dialogIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 16,
+    backgroundColor: C.row,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogClose: {
+    width: 37,
+    height: 37,
+    borderRadius: 12,
+    backgroundColor: C.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogEyebrow: {
+    color: C.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    marginBottom: 8,
+  },
+  dialogTitle: {
+    color: C.ink,
+    fontFamily: "serif",
+    fontSize: 29,
+    marginBottom: 12,
+  },
+  dialogDescription: {
+    color: C.muted,
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  dialogNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: C.background,
+    borderRadius: 15,
+    padding: 14,
+    marginBottom: 21,
+  },
+  dialogNoticeText: {
+    color: C.slateDark,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 19,
+  },
+  dialogButton: {
+    backgroundColor: C.slate,
+    minHeight: 52,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogButtonText: { color: C.paper, fontSize: 14, fontWeight: "800" },
 });

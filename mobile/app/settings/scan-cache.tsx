@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,12 +11,17 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listFixes,
   removeFix,
   clearFixStore,
   type ItemFix,
 } from "@/features/scan/fixStore";
+type ScanCacheDialog =
+  | { kind: "delete"; key: string; name: string }
+  | { kind: "clear"; count: number }
+  | { kind: "error"; title: string; message: string };
 
 type FixRow = {
   key: string;
@@ -27,7 +32,6 @@ type FixRow = {
   timesUsed: number;
   updatedAt: number | null;
 };
-
 const P = {
   ivory: "#F8F6F1",
   paper: "#FFFEFB",
@@ -42,7 +46,6 @@ const P = {
   red: "#9B5550",
   paleRed: "#F8EEEB",
 };
-
 function formatWhen(timestamp: number | null): string {
   if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) {
     return "Date unavailable";
@@ -52,27 +55,26 @@ function formatWhen(timestamp: number | null): string {
     ? "Date unavailable"
     : date.toLocaleString();
 }
-
 function formatExpiry(row: FixRow): string {
   if (row.expiryMode === "days" && row.expiryDays != null) {
     return `${row.expiryDays} day${row.expiryDays === 1 ? "" : "s"}`;
   }
   return "No saved expiry override";
 }
-
 export default function ScanCacheScreen() {
+  const insets = useSafeAreaInsets();
+  const operationInFlight = useRef(false);
+  const [dialog, setDialog] = useState<ScanCacheDialog | null>(null);
   const [map, setMap] = useState<Record<string, ItemFix>>({});
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-
   const refresh = useCallback(async () => {
     const byKey = await listFixes();
     setMap(byKey);
     setLoadError(false);
   }, []);
-
   // The local fix store can change elsewhere, so reload on every focus.
   useFocusEffect(
     useCallback(() => {
@@ -96,7 +98,6 @@ export default function ScanCacheScreen() {
       };
     }, []),
   );
-
   const total = Object.keys(map).length;
   const rows = useMemo((): FixRow[] => {
     const all = Object.entries(map).map(([key, fix]) => ({
@@ -122,63 +123,60 @@ export default function ScanCacheScreen() {
     );
   }, [map, query]);
   const busy = busyKey !== null;
-
   const onDeleteOne = (key: string) => {
-    if (busy) return;
-    Alert.alert(
-      "Delete saved correction?",
-      "KitchenBuddy will stop using this correction for future scans. Existing pantry items will not be deleted.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setBusyKey(key);
-              try {
-                await removeFix(key);
-                await refresh();
-              } catch (error) {
-                console.warn("Could not remove saved correction:", error);
-                Alert.alert("Unable to delete", "Please try again.");
-              } finally {
-                setBusyKey(null);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    if (busy || loading) return;
+    setDialog({
+      kind: "delete",
+      key,
+      name: map[key]?.canonicalName?.trim() || "Saved correction",
+    });
   };
 
   const onClearAll = () => {
-    if (busy || total === 0) return;
-    Alert.alert(
-      "Clear all saved corrections?",
-      `Remove all ${total} local scan correction${total === 1 ? "" : "s"}? Future scans will no longer use them. Your existing pantry items will stay intact.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear all",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              setBusyKey("__clear_all__");
-              try {
-                await clearFixStore();
-                await refresh();
-              } catch (error) {
-                console.warn("Could not clear saved corrections:", error);
-                Alert.alert("Unable to clear", "Please try again.");
-              } finally {
-                setBusyKey(null);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    if (busy || loading || total === 0) return;
+    setDialog({ kind: "clear", count: total });
+  };
+
+  const closeDialog = () => {
+    if (!operationInFlight.current) setDialog(null);
+  };
+
+  const confirmDialog = async () => {
+    if (!dialog || dialog.kind === "error") {
+      closeDialog();
+      return;
+    }
+    if (operationInFlight.current || busy) return;
+
+    // Preserve the original correction-store functions and refresh after changes.
+    const action = dialog;
+    operationInFlight.current = true;
+    setBusyKey(action.kind === "delete" ? action.key : "__clear_all__");
+    setDialog(null);
+    try {
+      if (action.kind === "delete") {
+        await removeFix(action.key);
+      } else {
+        await clearFixStore();
+      }
+      await refresh();
+    } catch (error) {
+      console.warn(
+        action.kind === "delete"
+          ? "Could not remove saved correction:"
+          : "Could not clear saved corrections:",
+        error,
+      );
+      setDialog({
+        kind: "error",
+        title:
+          action.kind === "delete" ? "Unable to delete" : "Unable to clear",
+        message: "Your changes could not be completed. Please try again.",
+      });
+    } finally {
+      operationInFlight.current = false;
+      setBusyKey(null);
+    }
   };
 
   return (
@@ -202,7 +200,6 @@ export default function ScanCacheScreen() {
             your groceries.
           </Text>
         </View>
-
         <View style={styles.hero}>
           <View style={styles.heroTop}>
             <View style={styles.heroIcon}>
@@ -233,7 +230,6 @@ export default function ScanCacheScreen() {
             </Text>
           </View>
         </View>
-
         <View style={styles.controlsCard}>
           <Text style={styles.sectionEyebrow}>FIND A CORRECTION</Text>
           <View style={styles.searchBox}>
@@ -286,12 +282,10 @@ export default function ScanCacheScreen() {
             </Pressable>
           </View>
         </View>
-
         <View style={styles.listHeader}>
           <Text style={styles.sectionTitle}>Your corrections</Text>
           <Text style={styles.listHint}>Newest first</Text>
         </View>
-
         {loading ? (
           <View style={styles.stateCard}>
             <ActivityIndicator color={P.slate} />
@@ -399,11 +393,252 @@ export default function ScanCacheScreen() {
         )}
         <Text style={styles.pageFooter}>KitchenBuddy · Scan corrections</Text>
       </ScrollView>
+
+      <Modal
+        visible={dialog !== null}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={closeDialog}
+      >
+        <View style={styles.dialogBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={closeDialog}
+            accessibilityLabel="Dismiss dialog"
+          />
+          {dialog && (
+            <View
+              style={[
+                styles.dialogSheet,
+                { paddingBottom: Math.max(insets.bottom, 16) + 18 },
+              ]}
+            >
+              <View style={styles.dialogHandle} />
+              <View
+                style={[
+                  styles.dialogIcon,
+                  dialog.kind !== "error" && styles.dialogIconDanger,
+                ]}
+              >
+                <Ionicons
+                  name={
+                    dialog.kind === "error"
+                      ? "alert-circle-outline"
+                      : "trash-outline"
+                  }
+                  size={25}
+                  color={dialog.kind === "error" ? P.slateDeep : P.red}
+                />
+              </View>
+              <Text style={styles.dialogEyebrow}>
+                {dialog.kind === "error"
+                  ? "SOMETHING WENT WRONG"
+                  : "MANAGE SCAN CORRECTIONS"}
+              </Text>
+              <Text style={styles.dialogTitle}>
+                {dialog.kind === "delete"
+                  ? "Delete saved correction?"
+                  : dialog.kind === "clear"
+                    ? "Clear all corrections?"
+                    : dialog.title}
+              </Text>
+              <Text style={styles.dialogDescription}>
+                {dialog.kind === "delete"
+                  ? "KitchenBuddy will stop applying this correction to future scans. Your existing pantry items will not be deleted."
+                  : dialog.kind === "clear"
+                    ? `Remove all ${dialog.count} saved correction${dialog.count === 1 ? "" : "s"}? Future scans will no longer use them. Existing pantry items stay intact.`
+                    : dialog.message}
+              </Text>
+              {dialog.kind === "delete" && (
+                <View style={styles.dialogDetail}>
+                  <Ionicons
+                    name="document-text-outline"
+                    size={17}
+                    color={P.slate}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dialogDetailLabel}>
+                      SELECTED CORRECTION
+                    </Text>
+                    <Text style={styles.dialogDetailTitle} numberOfLines={2}>
+                      {dialog.name}
+                    </Text>
+                    <Text style={styles.dialogDetailKey} numberOfLines={2}>
+                      {dialog.key}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {dialog.kind === "clear" && (
+                <View style={styles.dialogDetail}>
+                  <Ionicons name="albums-outline" size={18} color={P.slate} />
+                  <Text style={styles.dialogDetailTitle}>
+                    {dialog.count} saved{" "}
+                    {dialog.count === 1 ? "correction" : "corrections"}
+                  </Text>
+                </View>
+              )}
+              {dialog.kind === "error" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={closeDialog}
+                  style={({ pressed }) => [
+                    styles.dialogPrimary,
+                    pressed && styles.dialogPressed,
+                  ]}
+                >
+                  <Text style={styles.dialogPrimaryText}>OK</Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      dialog.kind === "delete"
+                        ? "Delete saved correction"
+                        : "Clear all saved corrections"
+                    }
+                    onPress={() => void confirmDialog()}
+                    style={({ pressed }) => [
+                      styles.dialogDestructive,
+                      pressed && styles.dialogPressed,
+                    ]}
+                  >
+                    <Ionicons name="trash-outline" size={17} color={P.paper} />
+                    <Text style={styles.dialogPrimaryText}>
+                      {dialog.kind === "delete"
+                        ? "Delete correction"
+                        : "Clear all corrections"}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={closeDialog}
+                    style={({ pressed }) => [
+                      styles.dialogCancel,
+                      pressed && styles.dialogPressed,
+                    ]}
+                  >
+                    <Text style={styles.dialogCancelText}>Cancel</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(24,30,31,0.46)",
+    justifyContent: "flex-end",
+  },
+  dialogSheet: {
+    backgroundColor: P.paper,
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    paddingHorizontal: 23,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: P.border,
+    shadowColor: "#17262A",
+    shadowOffset: { width: 0, height: -5 },
+    shadowOpacity: 0.11,
+    shadowRadius: 15,
+    elevation: 18,
+  },
+  dialogHandle: {
+    alignSelf: "center",
+    width: 39,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D9D4CC",
+    marginBottom: 22,
+  },
+  dialogIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 16,
+    backgroundColor: P.paleBlue,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+  dialogIconDanger: { backgroundColor: P.paleRed },
+  dialogEyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.3,
+    color: P.slate,
+    marginBottom: 7,
+  },
+  dialogTitle: {
+    fontSize: 26,
+    fontFamily: "serif",
+    color: P.ink,
+    marginBottom: 9,
+  },
+  dialogDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: P.muted,
+    marginBottom: 19,
+  },
+  dialogDetail: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    padding: 13,
+    borderRadius: 14,
+    backgroundColor: P.ivory,
+    borderWidth: 1,
+    borderColor: P.border,
+    marginBottom: 20,
+  },
+  dialogDetailLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1,
+    color: P.slate,
+  },
+  dialogDetailTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: P.ink,
+    marginTop: 3,
+  },
+  dialogDetailKey: { fontSize: 11, color: P.muted, marginTop: 4 },
+  dialogDestructive: {
+    minHeight: 49,
+    borderRadius: 14,
+    backgroundColor: P.red,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogPrimary: {
+    minHeight: 49,
+    borderRadius: 14,
+    backgroundColor: P.slateDeep,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dialogPrimaryText: { fontSize: 13, fontWeight: "800", color: P.paper },
+  dialogCancel: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+    backgroundColor: P.wash,
+    marginTop: 10,
+  },
+  dialogCancelText: { color: P.ink, fontWeight: "700", fontSize: 13 },
+  dialogPressed: { opacity: 0.76 },
   screen: { flex: 1, backgroundColor: P.ivory },
   content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 65 },
   heading: { marginBottom: 20 },
