@@ -5,7 +5,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Modal,
   Pressable,
   TextInput,
@@ -97,6 +96,19 @@ export default function PantryScreen() {
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
 
   const [categoryMenu, setCategoryMenu] = useState<MenuCategory | null>(null);
+
+  // One reason picker for inline trash, swipe-to-delete, and bulk Delete.
+  // The recorded action is what Pantry Analytics uses for utilization/waste.
+  const [removalTarget, setRemovalTarget] = useState<
+    | { kind: "single"; item: PantryItem }
+    | { kind: "bulk"; count: number }
+    | null
+  >(null);
+  const removalChoiceInProgress = useRef(false);
+  const [infoDialog, setInfoDialog] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
   const [confirmCategoryAction, setConfirmCategoryAction] = useState(false);
 
@@ -375,7 +387,7 @@ export default function PantryScreen() {
     recordUndoableRemoval(item, reason);
   }
 
-  const bulkDeleteSelected = () => {
+  const bulkDeleteSelected = (reason: "used" | "expired" | "removed") => {
     setUndo(null);
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -384,8 +396,6 @@ export default function PantryScreen() {
     const deleted: PantryItem[] = [];
 
     for (const k of ALL_CATEGORY_KEYS) {
-      console.log(selected[k]);
-
       if (selected[k].size === 0) continue;
 
       for (const it of pantry[k]) {
@@ -408,7 +418,9 @@ export default function PantryScreen() {
 
     // 3) Write history entries (don’t await; your queue handles ordering)
     for (const it of deleted) {
-      void appendPantryHistory(it, "removed");
+      void appendPantryHistory(it, reason).catch((error) =>
+        console.warn("Failed to record bulk pantry removal", error),
+      );
     }
 
     clearSelection();
@@ -519,34 +531,36 @@ export default function PantryScreen() {
     setEditOpen(true);
   };
 
-  function confirmDelete(categoryKey: string, item: PantryItem) {
-    Alert.alert("Remove item", "What happened to this item?", [
-      {
-        text: "Used",
+  function openRemovalSheet(item: PantryItem) {
+    removalChoiceInProgress.current = false;
+    void Haptics.selectionAsync();
+    setRemovalTarget({ kind: "single", item });
+  }
 
-        onPress: () => handleMarkUsed(item),
-      },
+  function openBulkRemovalSheet() {
+    if (selectedCount === 0) return;
+    removalChoiceInProgress.current = false;
+    void Haptics.selectionAsync();
+    setRemovalTarget({ kind: "bulk", count: selectedCount });
+  }
 
-      {
-        text: "Expired / Thrown Away",
+  function closeRemovalSheet() {
+    if (removalChoiceInProgress.current) return;
+    setRemovalTarget(null);
+  }
 
-        onPress: () => handleRemove(item, "expired"),
-      },
-
-      {
-        text: "Remove",
-
-        style: "destructive",
-
-        onPress: () => handleRemove(item, "removed"),
-      },
-
-      {
-        text: "Cancel",
-
-        style: "cancel",
-      },
-    ]);
+  function chooseRemovalReason(reason: "used" | "expired" | "removed") {
+    if (!removalTarget || removalChoiceInProgress.current) return;
+    removalChoiceInProgress.current = true;
+    const target = removalTarget;
+    setRemovalTarget(null);
+    if (target.kind === "bulk") {
+      bulkDeleteSelected(reason);
+    } else if (reason === "used") {
+      handleMarkUsed(target.item); // Retains the existing four-second Undo behavior.
+    } else {
+      handleRemove(target.item, reason);
+    }
   }
 
   const toggleAll = () => {
@@ -608,11 +622,11 @@ export default function PantryScreen() {
 
       setUndo(current);
 
-      Alert.alert(
-        "Undo failed",
-
-        "Could not reverse the pantry history change. Please try again.",
-      );
+      setInfoDialog({
+        title: "Undo failed",
+        message:
+          "Could not reverse the pantry history change. Please try again.",
+      });
     } finally {
       undoInProgress.current = false;
     }
@@ -1022,8 +1036,8 @@ export default function PantryScreen() {
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => handleRemove(item, "expired")}
-                    onSwipeDelete={() => handleRemove(item, "expired")}
+                    onPressDelete={() => openRemovalSheet(item)}
+                    onSwipeDelete={() => openRemovalSheet(item)}
                   />
                 ))}
               </View>
@@ -1089,8 +1103,8 @@ export default function PantryScreen() {
                     }}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => confirmDelete(item.categoryKey, item)}
-                    onSwipeDelete={() => handleRemove(item, "removed")}
+                    onPressDelete={() => openRemovalSheet(item)}
+                    onSwipeDelete={() => openRemovalSheet(item)}
                   />
                 ))}
               </View>
@@ -1173,8 +1187,8 @@ export default function PantryScreen() {
                         }}
                         onPressUsed={() => handleMarkUsed(item)}
                         onPressEdit={() => openEdit(cat.key, item.id)}
-                        onPressDelete={() => confirmDelete(cat.key, item)}
-                        onSwipeDelete={() => handleRemove(item, "removed")}
+                        onPressDelete={() => openRemovalSheet(item)}
+                        onSwipeDelete={() => openRemovalSheet(item)}
                       />
                     ))}
                 </View>
@@ -1261,20 +1275,7 @@ export default function PantryScreen() {
               <Text style={styles.bulkActionText}>Move</Text>
             </Pressable>
             <Pressable
-              onPress={() =>
-                Alert.alert(
-                  "Delete selected?",
-                  `Delete ${selectedCount} items?`,
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: bulkDeleteSelected,
-                    },
-                  ],
-                )
-              }
+              onPress={openBulkRemovalSheet}
               style={[styles.bulkAction, styles.bulkDeleteAction]}
             >
               <Ionicons name="trash-outline" size={17} color={PALETTE.paper} />
@@ -1495,6 +1496,221 @@ export default function PantryScreen() {
                   </Pressable>
                 </>
               )}
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Classification is required before a trash/swipe removal affects analytics. */}
+      <Modal
+        visible={removalTarget !== null}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={closeRemovalSheet}
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeRemovalSheet}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel item removal"
+          />
+          {removalTarget && (
+            <View style={styles.menuSheet}>
+              <View style={styles.menuGrabber} />
+              <View style={styles.menuHeadingRow}>
+                <View style={styles.menuTitleIcon}>
+                  <Ionicons
+                    name="help-circle-outline"
+                    size={23}
+                    color={PALETTE.slateDark}
+                  />
+                </View>
+                <View style={styles.menuHeadingCopy}>
+                  <Text style={styles.menuEyebrow}>
+                    KEEP YOUR INSIGHTS ACCURATE
+                  </Text>
+                  <Text style={styles.menuTitle}>
+                    What happened to{" "}
+                    {removalTarget.kind === "bulk"
+                      ? "these items?"
+                      : "this item?"}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={closeRemovalSheet}
+                  style={styles.menuClose}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close removal options"
+                >
+                  <Ionicons name="close" size={19} color={PALETTE.slateDark} />
+                </Pressable>
+              </View>
+              <View style={styles.menuInfoRow}>
+                <Ionicons
+                  name={
+                    removalTarget.kind === "bulk"
+                      ? "layers-outline"
+                      : "basket-outline"
+                  }
+                  size={16}
+                  color={PALETTE.slate}
+                />
+                <Text style={styles.menuInfoText} numberOfLines={2}>
+                  {removalTarget.kind === "bulk"
+                    ? `${removalTarget.count} selected ${removalTarget.count === 1 ? "item" : "items"} · one reason for all`
+                    : `${removalTarget.item.name}${removalTarget.item.quantity ? ` · ${removalTarget.item.quantity}` : ""}`}
+                </Text>
+              </View>
+              <Text style={styles.menuDescription}>
+                Choose the most accurate reason. This removes{" "}
+                {removalTarget.kind === "bulk"
+                  ? "the selected items"
+                  : "the item"}{" "}
+                from your pantry and records the outcome in Pantry History and
+                Analytics.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Used or consumed"
+                onPress={() => chooseRemovalReason("used")}
+                style={({ pressed }) => [
+                  styles.reasonOption,
+                  styles.reasonUsed,
+                  pressed && styles.menuPressed,
+                ]}
+              >
+                <View style={[styles.reasonIcon, styles.reasonIconUsed]}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={22}
+                    color="#516D5A"
+                  />
+                </View>
+                <View style={styles.menuOptionCopy}>
+                  <Text style={styles.reasonTitle}>Used / Consumed</Text>
+                  <Text style={styles.menuOptionSubtitle}>
+                    Count as food used, not wasted
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={PALETTE.muted}
+                />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Expired or thrown away"
+                onPress={() => chooseRemovalReason("expired")}
+                style={({ pressed }) => [
+                  styles.reasonOption,
+                  styles.reasonExpired,
+                  pressed && styles.menuPressed,
+                ]}
+              >
+                <View style={[styles.reasonIcon, styles.reasonIconExpired]}>
+                  <Ionicons
+                    name="time-outline"
+                    size={22}
+                    color={PALETTE.expired}
+                  />
+                </View>
+                <View style={styles.menuOptionCopy}>
+                  <Text style={styles.reasonTitle}>Expired / Thrown Away</Text>
+                  <Text style={styles.menuOptionSubtitle}>
+                    Count as expired food / waste
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={PALETTE.muted}
+                />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Removed for another reason"
+                onPress={() => chooseRemovalReason("removed")}
+                style={({ pressed }) => [
+                  styles.reasonOption,
+                  styles.reasonRemoved,
+                  pressed && styles.menuPressed,
+                ]}
+              >
+                <View style={[styles.reasonIcon, styles.reasonIconRemoved]}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={21}
+                    color={PALETTE.slateDark}
+                  />
+                </View>
+                <View style={styles.menuOptionCopy}>
+                  <Text style={styles.reasonTitle}>Removed / Correction</Text>
+                  <Text style={styles.menuOptionSubtitle}>
+                    Not counted as used or expired
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={PALETTE.muted}
+                />
+              </Pressable>
+              <Pressable
+                onPress={closeRemovalSheet}
+                style={styles.menuCancel}
+                accessibilityRole="button"
+              >
+                <Text style={styles.menuCancelText}>
+                  Cancel · Keep in pantry
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={infoDialog !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setInfoDialog(null)}
+      >
+        <View style={styles.menuOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss message"
+            onPress={() => setInfoDialog(null)}
+          />
+          {infoDialog && (
+            <View style={styles.menuSheet}>
+              <View style={styles.menuGrabber} />
+              <View style={styles.menuHeadingRow}>
+                <View style={styles.menuTitleIcon}>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={22}
+                    color={PALETTE.expired}
+                  />
+                </View>
+                <View style={styles.menuHeadingCopy}>
+                  <Text style={styles.menuEyebrow}>PANTRY NOTICE</Text>
+                  <Text style={styles.menuTitle}>{infoDialog.title}</Text>
+                </View>
+              </View>
+              <Text style={styles.menuDescription}>{infoDialog.message}</Text>
+              <Pressable
+                style={styles.reasonGotIt}
+                onPress={() => setInfoDialog(null)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.reasonGotItText}>Got it</Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -2017,4 +2233,38 @@ const styles = StyleSheet.create({
   },
   menuCancelText: { color: PALETTE.slateDark, fontSize: 13, fontWeight: "700" },
   menuPressed: { opacity: 0.75 },
+  reasonOption: {
+    minHeight: 72,
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 9,
+  },
+  reasonUsed: { backgroundColor: "#F1F6F0", borderColor: "#DFE9DB" },
+  reasonExpired: { backgroundColor: "#FCF5F2", borderColor: "#EFDEDA" },
+  reasonRemoved: { backgroundColor: "#F7F7F3", borderColor: PALETTE.border },
+  reasonIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reasonIconUsed: { backgroundColor: "#E4EDE0" },
+  reasonIconExpired: { backgroundColor: "#F3E5E0" },
+  reasonIconRemoved: { backgroundColor: PALETTE.taupe },
+  reasonTitle: { color: PALETTE.ink, fontSize: 14, fontWeight: "700" },
+  reasonGotIt: {
+    backgroundColor: PALETTE.slate,
+    minHeight: 49,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 3,
+  },
+  reasonGotItText: { color: PALETTE.paper, fontSize: 14, fontWeight: "800" },
 });

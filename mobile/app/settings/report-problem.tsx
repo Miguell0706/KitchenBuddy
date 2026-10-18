@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Image,
+  Modal,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 
 // The shared KitchenBuddy editorial palette used across Settings and Contact Support.
 const C = {
@@ -24,11 +26,38 @@ const C = {
   slate: "#586D77",
   slateDark: "#485F6A",
   ivory: "#F8F4ED",
+  taupe: "#E8E2DA",
   border: "#E9E5DE",
   cream: "#EDE6DA",
 };
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+const MAX_SCREENSHOTS = 3;
+const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024;
+type Screenshot = {
+  id: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+};
+type Dialog = {
+  title: string;
+  message: string;
+  kind: "info" | "error" | "success";
+};
+function imageMime(asset: ImagePicker.ImagePickerAsset): string | null {
+  const mime = asset.mimeType?.toLowerCase();
+  if (mime === "image/jpeg" || mime === "image/png" || mime === "image/webp")
+    return mime;
+  if (mime && mime !== "application/octet-stream") return null;
+  const filename = (asset.fileName ?? asset.uri).split("?")[0].toLowerCase();
+  if (/\.jpe?g$/.test(filename)) return "image/jpeg";
+  if (/\.png$/.test(filename)) return "image/png";
+  if (/\.webp$/.test(filename)) return "image/webp";
+  return null;
+}
+
 type ProblemType =
   | "Receipt scanning"
   | "Pantry"
@@ -73,54 +102,192 @@ export default function ReportProblemScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [descriptionFocused, setDescriptionFocused] = useState(false);
   const [expectedFocused, setExpectedFocused] = useState(false);
+  const submitRef = useRef(false);
+  const pickerRef = useRef(false);
+  const [picking, setPicking] = useState(false);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [preview, setPreview] = useState<Screenshot | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+
+  function dismissDialog() {
+    const completed = dialog?.kind === "success";
+    setDialog(null);
+    if (completed) router.back();
+  }
+
+  async function addScreenshots() {
+    if (
+      submitting ||
+      pickerRef.current ||
+      screenshots.length >= MAX_SCREENSHOTS
+    )
+      return;
+    pickerRef.current = true;
+    setPicking(true);
+    try {
+      // Uses the system photo picker; no broad library permission request needed.
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_SCREENSHOTS - screenshots.length,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const added: Screenshot[] = [];
+      let rejected = false;
+      for (const [index, asset] of result.assets.entries()) {
+        const mimeType = imageMime(asset);
+        if (
+          !mimeType ||
+          (typeof asset.fileSize === "number" &&
+            asset.fileSize > MAX_SCREENSHOT_BYTES)
+        ) {
+          rejected = true;
+          continue;
+        }
+        const ext =
+          mimeType === "image/jpeg"
+            ? "jpg"
+            : mimeType === "image/png"
+              ? "png"
+              : "webp";
+        added.push({
+          id: `${Date.now()}-${index}-${asset.assetId ?? asset.uri}`,
+          uri: asset.uri,
+          name: `screenshot-${Date.now()}-${index + 1}.${ext}`,
+          mimeType,
+          size: asset.fileSize,
+        });
+      }
+      setScreenshots((current) => {
+        const next = [...current];
+        for (const asset of added) {
+          if (next.length >= MAX_SCREENSHOTS) break;
+          if (!next.some((existing) => existing.uri === asset.uri))
+            next.push(asset);
+        }
+        return next;
+      });
+      if (rejected)
+        setDialog({
+          kind: "error",
+          title: "Some images weren't added",
+          message:
+            "Choose JPG, PNG, or WebP screenshots, no larger than 4 MB each. HEIC images can be exported as JPG first.",
+        });
+    } catch (error) {
+      console.warn("Problem report screenshot picker failed:", error);
+      setDialog({
+        kind: "error",
+        title: "Couldn't open photos",
+        message: "Please try selecting your screenshots again.",
+      });
+    } finally {
+      pickerRef.current = false;
+      setPicking(false);
+    }
+  }
 
   const canSubmit = description.trim().length >= 5;
 
   async function handleSubmit() {
+    if (submitRef.current) return;
     const descriptionTrimmed = description.trim();
     const expectedTrimmed = expected.trim();
-
     if (descriptionTrimmed.length < 5) {
-      Alert.alert(
-        "Tell us what happened",
-        "Please describe the problem before submitting.",
-      );
+      setDialog({
+        kind: "info",
+        title: "Tell us what happened",
+        message: "Please describe the problem before submitting.",
+      });
       return;
     }
-    if (submitting) return;
+    if (picking || pickerRef.current) return;
 
+    submitRef.current = true;
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      // Existing support API and payload are intentionally unchanged.
+      // Match the existing /api/support contract for both JSON and multipart.
+      const fields = {
+        type: "problem",
+        category: problemType,
+        message: descriptionTrimmed,
+        ...(expectedTrimmed ? { expected: expectedTrimmed } : {}),
+      };
+      let body: string | FormData;
+      let headers: Record<string, string> | undefined;
+      if (screenshots.length > 0) {
+        const form = new FormData();
+        Object.entries(fields).forEach(([key, value]) =>
+          form.append(key, value),
+        );
+        screenshots.forEach((shot) => {
+          // React Native's FormData accepts file objects. Fetch must set the
+          // multipart Content-Type and boundary; don't supply it manually.
+          form.append("screenshots", {
+            uri: shot.uri,
+            name: shot.name,
+            type: shot.mimeType,
+          } as unknown as Blob);
+        });
+        body = form;
+      } else {
+        // Existing text-only reports stay compatible with the JSON backend.
+        body = JSON.stringify(fields);
+        headers = { "Content-Type": "application/json" };
+      }
+
       const response = await fetch(
         "https://receiptchef.onrender.com/api/support",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "problem",
-            category: problemType,
-            message: descriptionTrimmed,
-            expected: expectedTrimmed || undefined,
-          }),
+          headers,
+          body,
         },
       );
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error(data?.error || "Failed to send problem report.");
-      }
-      Alert.alert(
-        "Report received",
-        "Thanks for helping improve KitchenBuddy.",
-        [{ text: "Done", onPress: () => router.back() }],
+      const serverVersion = response.headers.get(
+        "x-kitchenbuddy-support-version",
       );
+      const data: { ok?: boolean; error?: string } = await response
+        .json()
+        .catch(() => ({}));
+      if (!response.ok || data.ok !== true) {
+        if (
+          screenshots.length > 0 &&
+          !serverVersion &&
+          data.error === "Type and message are required."
+        ) {
+          throw new Error(
+            "The deployed support server does not appear to support screenshots yet. Deploy the updated backend route, then try again. Your report and screenshots are still here.",
+          );
+        }
+        if (data.error === "Type and message are required.") {
+          throw new Error(
+            "The support server did not receive the report fields. Verify the updated backend is deployed.",
+          );
+        }
+        throw new Error(
+          data.error ||
+            `Your report could not be sent (HTTP ${response.status}). Please try again.`,
+        );
+      }
+      setDialog({
+        kind: "success",
+        title: "Report received",
+        message: `Thanks for helping improve KitchenBuddy. Your report${screenshots.length ? ` and ${screenshots.length} screenshot${screenshots.length === 1 ? "" : "s"}` : ""} ${screenshots.length === 0 ? "has" : "have"} been submitted.`,
+      });
     } catch (error) {
       console.error("Report problem error:", error);
-      Alert.alert(
-        "Couldn't send report",
-        "Something went wrong while sending your report. Please try again.",
-      );
+      setDialog({
+        kind: "error",
+        title: "Couldn't send report",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Something went wrong while sending your report. Please try again.",
+      });
     } finally {
+      submitRef.current = false;
       setSubmitting(false);
     }
   }
@@ -317,33 +484,80 @@ export default function ReportProblemScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.eyebrow}>A LITTLE EXTRA CONTEXT</Text>
-            <Text style={styles.sectionTitle}>Screenshot</Text>
+            <Text style={styles.sectionTitle}>Screenshots</Text>
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Screenshot attachments coming soon"
-            onPress={() =>
-              Alert.alert(
-                "Add Screenshot",
-                "Screenshot attachments will be added soon.",
-              )
+            accessibilityLabel="Add screenshots from your photos"
+            disabled={
+              submitting || picking || screenshots.length >= MAX_SCREENSHOTS
             }
+            onPress={() => void addScreenshots()}
             style={({ pressed }) => [
               styles.attachmentCard,
+              (submitting ||
+                picking ||
+                screenshots.length >= MAX_SCREENSHOTS) &&
+                styles.faded,
               pressed && styles.pressed,
             ]}
           >
             <View style={styles.attachmentIcon}>
-              <Ionicons name="image-outline" size={23} color={C.slate} />
+              <Ionicons name="images-outline" size={23} color={C.slate} />
             </View>
             <View style={styles.attachmentText}>
-              <Text style={styles.attachmentTitle}>Screenshot attachments</Text>
+              <Text style={styles.attachmentTitle}>
+                {screenshots.length
+                  ? "Add another screenshot"
+                  : "Add screenshots"}
+              </Text>
               <Text style={styles.attachmentSubtitle}>
-                An optional feature coming soon
+                {screenshots.length}/3 selected · Optional · JPG, PNG or WebP ·
+                4 MB each
               </Text>
             </View>
-            <Ionicons name="time-outline" size={21} color={C.muted} />
+            {picking ? (
+              <ActivityIndicator color={C.slate} />
+            ) : (
+              <Ionicons name="add-circle-outline" size={23} color={C.slate} />
+            )}
           </Pressable>
+          {screenshots.length > 0 && (
+            <View style={styles.screenshotGrid}>
+              {screenshots.map((shot, index) => (
+                <View key={shot.id} style={styles.shotCard}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Preview screenshot ${index + 1}`}
+                    onPress={() => setPreview(shot)}
+                    disabled={submitting}
+                  >
+                    <Image
+                      source={{ uri: shot.uri }}
+                      style={styles.shotImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.shotLabel}>
+                      <Text style={styles.shotLabelText}>VIEW {index + 1}</Text>
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove screenshot ${index + 1}`}
+                    disabled={submitting}
+                    style={styles.removeShot}
+                    onPress={() =>
+                      setScreenshots((current) =>
+                        current.filter((item) => item.id !== shot.id),
+                      )
+                    }
+                  >
+                    <Ionicons name="close" size={18} color={C.paper} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
 
           <View style={styles.infoCard}>
             <Ionicons
@@ -361,14 +575,15 @@ export default function ReportProblemScreen() {
             accessibilityRole="button"
             accessibilityLabel="Submit problem report"
             accessibilityState={{
-              disabled: !canSubmit || submitting,
+              disabled: !canSubmit || submitting || picking,
               busy: submitting,
             }}
-            disabled={!canSubmit || submitting}
+            disabled={!canSubmit || submitting || picking}
             onPress={() => void handleSubmit()}
             style={({ pressed }) => [
               styles.submitButton,
-              (!canSubmit || submitting) && styles.submitButtonDisabled,
+              (!canSubmit || submitting || picking) &&
+                styles.submitButtonDisabled,
               pressed && canSubmit && !submitting && styles.submitButtonPressed,
             ]}
           >
@@ -389,6 +604,80 @@ export default function ReportProblemScreen() {
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
+      <Modal
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        visible={preview !== null}
+        onRequestClose={() => setPreview(null)}
+      >
+        <View style={styles.previewBackdrop}>
+          <Pressable
+            style={styles.previewClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close screenshot preview"
+            onPress={() => setPreview(null)}
+          >
+            <Ionicons name="close" size={25} color={C.paper} />
+          </Pressable>
+          {preview && (
+            <Image
+              source={{ uri: preview.uri }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
+          <Text style={styles.previewCaption}>Screenshot preview</Text>
+        </View>
+      </Modal>
+      <Modal
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        visible={dialog !== null}
+        onRequestClose={dismissDialog}
+      >
+        <View style={styles.dialogBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            accessibilityLabel="Close message"
+            onPress={dismissDialog}
+          />
+          <View style={styles.dialogSheet} accessibilityViewIsModal>
+            <View style={styles.dialogGrabber} />
+            <View
+              style={[
+                styles.dialogIcon,
+                dialog?.kind === "error" && styles.dialogIconError,
+              ]}
+            >
+              <Ionicons
+                name={
+                  dialog?.kind === "success"
+                    ? "checkmark-circle-outline"
+                    : dialog?.kind === "error"
+                      ? "alert-circle-outline"
+                      : "information-circle-outline"
+                }
+                size={26}
+                color={dialog?.kind === "error" ? "#9B5550" : C.slate}
+              />
+            </View>
+            <Text style={styles.dialogOverline}>KITCHENBUDDY REPORTS</Text>
+            <Text style={styles.dialogTitle}>{dialog?.title}</Text>
+            <Text style={styles.dialogMessage}>{dialog?.message}</Text>
+            <Pressable
+              accessibilityRole="button"
+              style={styles.dialogButton}
+              onPress={dismissDialog}
+            >
+              <Text style={styles.dialogButtonText}>
+                {dialog?.kind === "success" ? "Done" : "Got it"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -648,4 +937,130 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
   pressed: { opacity: 0.72 },
+  faded: { opacity: 0.5 },
+  screenshotGrid: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: -7,
+    marginBottom: 19,
+  },
+  shotCard: {
+    flex: 1,
+    minWidth: 0,
+    aspectRatio: 0.85,
+    borderRadius: 15,
+    overflow: "hidden",
+    backgroundColor: C.row,
+    borderColor: C.border,
+    borderWidth: 1,
+  },
+  shotImage: { width: "100%", height: "100%" },
+  shotLabel: {
+    position: "absolute",
+    left: 5,
+    bottom: 5,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    backgroundColor: "rgba(41,45,44,0.75)",
+  },
+  shotLabelText: { fontSize: 9, fontWeight: "800", color: C.paper },
+  removeShot: {
+    position: "absolute",
+    right: 5,
+    top: 5,
+    width: 27,
+    height: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: "rgba(41,45,44,0.85)",
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(20,25,27,0.97)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  previewClose: {
+    position: "absolute",
+    top: 55,
+    right: 20,
+    zIndex: 2,
+    padding: 12,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderRadius: 15,
+  },
+  previewImage: { width: "100%", height: "78%" },
+  previewCaption: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: C.paper,
+    marginTop: 14,
+  },
+  dialogBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(28,33,34,0.54)",
+  },
+  dialogSheet: {
+    borderTopLeftRadius: 29,
+    borderTopRightRadius: 29,
+    paddingHorizontal: 25,
+    paddingTop: 13,
+    paddingBottom: 38,
+    backgroundColor: C.paper,
+    alignItems: "center",
+  },
+  dialogGrabber: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: C.taupe,
+    marginBottom: 20,
+  },
+  dialogIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.row,
+    marginBottom: 13,
+  },
+  dialogIconError: { backgroundColor: "#F8EEEB" },
+  dialogOverline: {
+    color: C.slate,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    marginBottom: 8,
+  },
+  dialogTitle: {
+    fontFamily: Platform.select({
+      ios: "Georgia",
+      android: "serif",
+      default: "serif",
+    }),
+    fontSize: 27,
+    color: C.ink,
+    textAlign: "center",
+  },
+  dialogMessage: {
+    marginTop: 10,
+    marginBottom: 23,
+    color: C.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  dialogButton: {
+    alignSelf: "stretch",
+    paddingVertical: 15,
+    borderRadius: 15,
+    backgroundColor: C.slate,
+    alignItems: "center",
+  },
+  dialogButtonText: { color: C.paper, fontWeight: "800", fontSize: 15 },
 });

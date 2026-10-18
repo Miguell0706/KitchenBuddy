@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { CategoryKey, PantryItem } from "./types";
+import type { CategoryKey, PantryItem, IngredientImage } from "./types";
 
 // Keep this key unchanged: existing Pantry History and Analytics use this store.
 const HISTORY_KEY = "@kb_pantry_history_v2";
@@ -18,6 +18,9 @@ export type PantryHistoryEntry = {
   id: string; // PantryItem ID.
   name: string;
   recipeSearchName?: string;
+  // Only lightweight metadata/URL is saved, never the image bytes.
+  // Optional so the existing v2 history entries remain compatible.
+  ingredientImage?: IngredientImage;
   categoryKey: CategoryKey;
   quantity: string;
   expiryDate: string | null;
@@ -85,6 +88,7 @@ export function appendPantryHistory(
       id: item.id,
       name: item.name,
       recipeSearchName: item.recipeSearchName,
+      ingredientImage: item.ingredientImage ?? undefined,
       categoryKey: item.categoryKey,
       quantity: item.quantity,
       expiryDate: item.expiryDate,

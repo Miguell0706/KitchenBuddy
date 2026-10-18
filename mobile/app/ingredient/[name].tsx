@@ -26,6 +26,9 @@ import {
 } from "@/features/pantry/analytics";
 import { useRecipesStore } from "@/features/recipes/store";
 
+const IMAGE_ENDPOINT =
+  "https://receiptchef.onrender.com/api/images/ingredient-image";
+
 const PALETTE = {
   background: "#F6F3EE",
   paper: "#FFFEFB",
@@ -110,6 +113,22 @@ function Stat({
   );
 }
 
+/** The backend checks ingredient_image_cache first; Pexels is only a cache miss. */
+async function fetchIngredientImage(
+  name: string,
+): Promise<IngredientImage | null> {
+  const response = await fetch(
+    `${IMAGE_ENDPOINT}?name=${encodeURIComponent(name)}`,
+  );
+  if (!response.ok) throw new Error(`Image lookup failed (${response.status})`);
+  const result: { ok?: boolean; image?: IngredientImage | null } =
+    await response.json();
+  if (!result.ok || !result.image || typeof result.image.url !== "string")
+    return null;
+  if (!/^https?:\/\//i.test(result.image.url)) return null;
+  return result.image;
+}
+
 export default function IngredientPage() {
   const params = useLocalSearchParams<{ name?: string | string[] }>();
   const rawName = Array.isArray(params.name) ? params.name[0] : params.name;
@@ -122,6 +141,8 @@ export default function IngredientPage() {
   const [preferredImage, setPreferredImage] = useState<IngredientImage | null>(
     null,
   );
+  const [cachedImage, setCachedImage] = useState<IngredientImage | null>(null);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const savedRecipes = useRecipesStore((state) => state.saved);
 
@@ -141,9 +162,48 @@ export default function IngredientPage() {
             }),
           ]);
           if (!active) return;
+          const matchingPantry = Object.values(pantry).flat() as PantryItem[];
           setHistory(events);
-          setPantryItems(Object.values(pantry).flat() as PantryItem[]);
+          setPantryItems(matchingPantry);
           setPreferredImage(override?.image ?? null);
+          setCachedImage(null);
+          setFailedImageUrl(null);
+
+          const matches = (value: {
+            name: string;
+            recipeSearchName?: string;
+          }) =>
+            normalize(value.name) === key ||
+            Boolean(
+              value.recipeSearchName &&
+              normalize(value.recipeSearchName) === key,
+            );
+          const matchingItems = matchingPantry.filter(matches);
+          const matchingEvents = events.filter(matches);
+          const hasImage = Boolean(
+            override?.image?.url ||
+            matchingItems.some((item) => item.ingredientImage?.url) ||
+            matchingEvents.some((event) => event.ingredientImage?.url),
+          );
+          // Existing history without a snapshot uses the Postgres/Pexels cache.
+          if (!hasImage) {
+            const lookupName =
+              matchingEvents.find((event) => event.recipeSearchName?.trim())
+                ?.recipeSearchName ||
+              matchingItems.find((item) => item.recipeSearchName?.trim())
+                ?.recipeSearchName ||
+              ingredientName;
+            void fetchIngredientImage(lookupName)
+              .then((image) => {
+                if (active) setCachedImage(image);
+              })
+              .catch((error) =>
+                console.warn(
+                  "Historical ingredient image lookup failed",
+                  error,
+                ),
+              );
+          }
         } catch (error) {
           console.warn("Failed to load ingredient details", error);
           if (active) setPreferredImage(null);
@@ -190,11 +250,22 @@ export default function IngredientPage() {
     [ingredientEvents],
   );
 
-  // Manual image preference has priority over an image attached to a current pantry item.
-  const imageUrl =
-    preferredImage?.url ??
+  // Keep manual choices first; history snapshots survive Pantry removal.
+  // Legacy history can use the shared backend Postgres/Pexels cache.
+  const resolvedImageUrl =
+    preferredImage?.url ||
     currentItems.find((item) => item.ingredientImage?.url)?.ingredientImage
-      ?.url;
+      ?.url ||
+    ingredientEvents.find((event) => event.ingredientImage?.url)
+      ?.ingredientImage?.url ||
+    cachedImage?.url ||
+    null;
+  const imageUrl =
+    resolvedImageUrl !== failedImageUrl
+      ? resolvedImageUrl
+      : cachedImage?.url && cachedImage.url !== failedImageUrl
+        ? cachedImage.url
+        : null;
   const category =
     currentItems[0]?.categoryKey ?? ingredientEvents[0]?.categoryKey;
 
@@ -242,6 +313,24 @@ export default function IngredientPage() {
                 source={{ uri: imageUrl }}
                 style={styles.heroImage}
                 resizeMode="cover"
+                onError={() => {
+                  setFailedImageUrl(imageUrl);
+                  // If an older saved URL has gone stale, retry through Postgres.
+                  if (!cachedImage?.url) {
+                    const lookupName =
+                      ingredientEvents.find((event) =>
+                        event.recipeSearchName?.trim(),
+                      )?.recipeSearchName ||
+                      currentItems.find((item) => item.recipeSearchName?.trim())
+                        ?.recipeSearchName ||
+                      ingredientName;
+                    void fetchIngredientImage(lookupName)
+                      .then(setCachedImage)
+                      .catch((error) =>
+                        console.warn("Ingredient image recovery failed", error),
+                      );
+                  }
+                }}
               />
             ) : (
               <View style={[styles.heroImage, styles.heroPlaceholder]}>
