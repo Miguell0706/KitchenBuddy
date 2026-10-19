@@ -34,7 +34,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* NEW */}
       <Tabs.Screen
         name="grocery-list"
         options={{
@@ -45,7 +44,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* NEW */}
       <Tabs.Screen
         name="settings"
         options={{

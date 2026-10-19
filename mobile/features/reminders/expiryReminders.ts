@@ -3,12 +3,18 @@ import * as Notifications from "expo-notifications";
 import { loadPantry } from "@/features/pantry/storage";
 import type { PantryItem } from "@/features/pantry/types";
 import type { ReminderSettings } from "./reminderStorage";
-import { ensureKitchenBuddyNotifications } from "./notificationSetup";
+import { ensureKitchenBuddyNotifications } from "./notificationRegistration";
 import {
   expiryChannelId,
   EXPIRY_CATEGORY,
   expiryReminderCopy,
 } from "./notificationContent";
+
+const reminderLog = (...args: unknown[]) => {
+  if (__DEV__) {
+    console.log("[KitchenBuddy Expiry]", ...args);
+  }
+};
 
 const EXPIRY_NOTIFICATION_IDS_KEY = "expiry_notification_ids_v1";
 let queue: Promise<void> = Promise.resolve();
@@ -58,9 +64,22 @@ export function scheduleExpiryReminders(
   settings: ReminderSettings,
 ): Promise<void> {
   const snapshot = { ...settings };
+
   return serialize(async () => {
+    reminderLog("Synchronizing expiry reminders...", {
+      enabled: snapshot.expiryReminders,
+      lead: snapshot.expiryLead,
+      time: snapshot.expiryTimeMinutes,
+      sound: snapshot.expirySound,
+    });
+
     await cancelTracked();
-    if (!snapshot.expiryReminders) return;
+
+    if (!snapshot.expiryReminders) {
+      reminderLog("Expiry reminders disabled. Existing reminders cleared.");
+      return;
+    }
+
     await ensureKitchenBuddyNotifications();
     const permission = await Notifications.getPermissionsAsync();
     if (
@@ -116,12 +135,25 @@ export function scheduleExpiryReminders(
           },
         });
         ids.push(id);
+
         // Persist progressively so interrupted scheduling remains recoverable.
         await AsyncStorage.setItem(
           EXPIRY_NOTIFICATION_IDS_KEY,
           JSON.stringify(ids),
         );
+
+        reminderLog("Scheduled:", {
+          item: item.name,
+          notificationId: id,
+          expiryDate: item.expiryDate,
+          reminderDate: when.toLocaleString(),
+        });
       }
+
+      // This must remain INSIDE the try block.
+      reminderLog("Synchronization complete.", {
+        scheduled: ids.length,
+      });
     } catch (error) {
       console.warn(
         "Partial expiry schedule; next synchronization will cancel recorded IDs:",
@@ -138,7 +170,13 @@ export function scheduleExpirySnooze(
   settings: ReminderSettings,
 ): Promise<void> {
   return serialize(async () => {
-    if (!settings.expiryReminders) return;
+    if (!settings.expiryReminders) {
+      reminderLog("Snooze skipped: expiry reminders disabled.");
+      return;
+    }
+
+    reminderLog("Scheduling 24-hour snooze for:", item.name);
+
     await ensureKitchenBuddyNotifications();
     const when = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const id = await Notifications.scheduleNotificationAsync({
@@ -164,6 +202,12 @@ export function scheduleExpirySnooze(
     });
     const ids = await readIds();
     ids.push(id);
+    reminderLog("Snooze scheduled:", {
+      item: item.name,
+      notificationId: id,
+      expiryDate: item.expiryDate,
+      reminderDate: when.toLocaleString(),
+    });
     await AsyncStorage.setItem(
       EXPIRY_NOTIFICATION_IDS_KEY,
       JSON.stringify(ids),

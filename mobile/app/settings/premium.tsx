@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,9 +11,7 @@ import {
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePremium } from "@/context/PremiumContext";
-
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
-
 // KitchenBuddy editorial palette, shared visually with Grocery, About and Settings.
 const C = {
   background: "#F6F3EE",
@@ -26,47 +24,95 @@ const C = {
   taupe: "#E8E2DA",
   border: "#E9E5DE",
   cream: "#EDE6DA",
+  red: "#9B5550",
+  redWash: "#F8EEEB",
 };
-
 export default function PremiumScreen() {
   const router = useRouter();
   const { isPremium, isLoading, activatePremium, deactivatePremium } =
     usePremium();
+  type PremiumDialog =
+    | { kind: "info" | "success" | "error"; title: string; message: string }
+    | { kind: "confirm-reset"; title: string; message: string };
+
+  const [dialog, setDialog] = useState<PremiumDialog | null>(null);
+  const [busy, setBusy] = useState(false);
+  const operationInProgress = useRef(false);
+
+  const closeDialog = () => {
+    if (!operationInProgress.current) setDialog(null);
+  };
 
   async function handlePremium() {
+    if (operationInProgress.current || isLoading) return;
     if (isPremium) {
-      Alert.alert("Premium Active", "KitchenBuddy Premium is already active.");
+      setDialog({
+        kind: "info",
+        title: "Premium is active",
+        message:
+          "KitchenBuddy Premium is already enabled for testing on this device.",
+      });
       return;
     }
 
+    operationInProgress.current = true;
+    setBusy(true);
     try {
       await activatePremium();
-      Alert.alert(
-        "Premium Activated",
-        "KitchenBuddy Premium is now active for testing.",
-      );
+      setDialog({
+        kind: "success",
+        title: "Premium activated",
+        message:
+          "Your test access is active. No payment or subscription was created.",
+      });
     } catch (error) {
       console.error("Premium activation error:", error);
-      Alert.alert(
-        "Couldn't Activate Premium",
-        "Something went wrong while activating Premium.",
-      );
+      setDialog({
+        kind: "error",
+        title: "Couldn't activate Premium",
+        message:
+          "Something went wrong while enabling test access. Please try again.",
+      });
+    } finally {
+      operationInProgress.current = false;
+      setBusy(false);
     }
   }
 
-  async function handleResetPremium() {
+  function handleResetPremium() {
+    if (operationInProgress.current || isLoading || !isPremium) return;
+    setDialog({
+      kind: "confirm-reset",
+      title: "Reset test access?",
+      message:
+        "Return this device to KitchenBuddy Free? Premium features will become locked again. This doesn't cancel a real subscription.",
+    });
+  }
+
+  async function confirmResetPremium() {
+    if (operationInProgress.current) return;
+    operationInProgress.current = true;
+    setBusy(true);
+    setDialog(null);
     try {
       await deactivatePremium();
-      Alert.alert(
-        "Premium Reset",
-        "KitchenBuddy has been returned to the Free version.",
-      );
+      setDialog({
+        kind: "success",
+        title: "Test access reset",
+        message:
+          "KitchenBuddy has been returned to the Free version on this device.",
+      });
     } catch (error) {
       console.error("Premium reset error:", error);
-      Alert.alert(
-        "Couldn't Reset Premium",
-        "Something went wrong while resetting Premium.",
-      );
+      setDialog({
+        kind: "error",
+        title: "Couldn't reset Premium",
+        message:
+          "Something went wrong while resetting test access. Please try again.",
+      });
+    } finally {
+      operationInProgress.current = false;
+      setBusy(false);
     }
   }
 
@@ -82,7 +128,6 @@ export default function PremiumScreen() {
           headerShadowVisible: false,
         }}
       />
-
       <View style={styles.screen}>
         <ScrollView
           contentContainerStyle={styles.content}
@@ -115,7 +160,6 @@ export default function PremiumScreen() {
               </Text>
             </View>
           </View>
-
           <View style={styles.section}>
             <Text style={styles.eyebrow}>YOUR MEMBERSHIP</Text>
             <Text style={styles.sectionTitle}>Your current plan</Text>
@@ -155,7 +199,6 @@ export default function PremiumScreen() {
               )}
             </View>
           </View>
-
           <View style={styles.section}>
             <Text style={styles.eyebrow}>MORE POSSIBILITIES</Text>
             <Text style={styles.sectionTitle}>The Premium collection</Text>
@@ -178,7 +221,6 @@ export default function PremiumScreen() {
               description="See useful insights about your pantry, food usage, expiration patterns, and grocery habits over time."
             />
           </View>
-
           <View style={styles.section}>
             <Text style={styles.eyebrow}>ALWAYS INCLUDED</Text>
             <Text style={styles.sectionTitle}>The essentials stay free.</Text>
@@ -190,12 +232,13 @@ export default function PremiumScreen() {
               <FreeFeature text="Basic recipe search" />
             </View>
           </View>
-
           {!isLoading && !isPremium && (
             <View style={styles.actionSection}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Activate Premium for testing"
+                accessibilityState={{ disabled: busy }}
+                disabled={busy}
                 onPress={handlePremium}
                 style={({ pressed }) => [
                   styles.primaryButton,
@@ -212,7 +255,6 @@ export default function PremiumScreen() {
               </Text>
             </View>
           )}
-
           {!isLoading && isPremium && (
             <View style={styles.activeCard}>
               <View style={styles.activeIcon}>
@@ -231,11 +273,12 @@ export default function PremiumScreen() {
               </View>
             </View>
           )}
-
           {__DEV__ && !isLoading && isPremium && (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Reset Premium for testing"
+              accessibilityState={{ disabled: busy }}
+              disabled={busy}
               onPress={handleResetPremium}
               style={({ pressed }) => [
                 styles.resetButton,
@@ -248,15 +291,16 @@ export default function PremiumScreen() {
               </Text>
             </Pressable>
           )}
-
           <View style={styles.purchaseLinks}>
             <Pressable
               accessibilityRole="button"
               onPress={() =>
-                Alert.alert(
-                  "Restore Purchase",
-                  "Premium subscriptions are not available yet.",
-                )
+                setDialog({
+                  kind: "info",
+                  title: "Restore purchase",
+                  message:
+                    "Purchases and subscriptions aren't available yet. This screen currently offers test access only; there is no purchase to restore.",
+                })
               }
               style={styles.linkTap}
             >
@@ -283,11 +327,127 @@ export default function PremiumScreen() {
             KITCHENBUDDY · MORE OF THE GOOD STUFF
           </Text>
         </ScrollView>
+
+        <Modal
+          visible={dialog !== null}
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={closeDialog}
+        >
+          <View style={styles.dialogOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFillObject}
+              onPress={closeDialog}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss message"
+              disabled={busy}
+            />
+            {dialog && (
+              <View style={styles.dialogSheet}>
+                <View style={styles.dialogGrabber} />
+                <View style={styles.dialogHeader}>
+                  <View
+                    style={[
+                      styles.dialogIcon,
+                      dialog.kind === "error" && styles.dialogIconError,
+                      dialog.kind === "confirm-reset" &&
+                        styles.dialogIconWarning,
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        dialog.kind === "success"
+                          ? "checkmark-circle-outline"
+                          : dialog.kind === "error"
+                            ? "alert-circle-outline"
+                            : dialog.kind === "confirm-reset"
+                              ? "refresh-outline"
+                              : "information-circle-outline"
+                      }
+                      size={25}
+                      color={
+                        dialog.kind === "error" ||
+                        dialog.kind === "confirm-reset"
+                          ? C.red
+                          : C.slateDark
+                      }
+                    />
+                  </View>
+                  <Pressable
+                    onPress={closeDialog}
+                    hitSlop={10}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close message"
+                    style={styles.dialogClose}
+                  >
+                    <Ionicons name="close" size={20} color={C.slateDark} />
+                  </Pressable>
+                </View>
+                <Text style={styles.dialogEyebrow}>
+                  {dialog.kind === "confirm-reset"
+                    ? "CONFIRM TEST RESET"
+                    : "KITCHENBUDDY PREMIUM"}
+                </Text>
+                <Text style={styles.dialogTitle}>{dialog.title}</Text>
+                <Text style={styles.dialogMessage}>{dialog.message}</Text>
+                {dialog.kind === "confirm-reset" ? (
+                  <>
+                    <Pressable
+                      onPress={() => void confirmResetPremium()}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [
+                        styles.dialogDangerButton,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      {busy ? (
+                        <ActivityIndicator color={C.paper} />
+                      ) : (
+                        <Ionicons
+                          name="refresh-outline"
+                          size={18}
+                          color={C.paper}
+                        />
+                      )}
+                      <Text style={styles.dialogPrimaryText}>
+                        Yes, reset test access
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={closeDialog}
+                      disabled={busy}
+                      accessibilityRole="button"
+                      style={styles.dialogSecondaryButton}
+                    >
+                      <Text style={styles.dialogSecondaryText}>
+                        Keep Premium
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable
+                    onPress={closeDialog}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.dialogPrimaryButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.dialogPrimaryText}>Got it</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+          </View>
+        </Modal>
       </View>
     </>
   );
 }
-
 function PremiumFeature({
   icon,
   title,
@@ -312,7 +472,6 @@ function PremiumFeature({
     </View>
   );
 }
-
 function FreeFeature({ text }: { text: string }) {
   return (
     <View style={styles.freeFeature}>
@@ -323,7 +482,6 @@ function FreeFeature({ text }: { text: string }) {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.background },
   content: { padding: 16, paddingBottom: 52 },
@@ -593,4 +751,97 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
     marginTop: 14,
   },
+  dialogOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(24,30,32,0.44)",
+  },
+  dialogSheet: {
+    backgroundColor: C.paper,
+    borderTopLeftRadius: 27,
+    borderTopRightRadius: 27,
+    paddingHorizontal: 23,
+    paddingTop: 11,
+    paddingBottom: 32,
+    borderTopWidth: 1,
+    borderColor: C.border,
+  },
+  dialogGrabber: {
+    width: 39,
+    height: 4,
+    borderRadius: 99,
+    alignSelf: "center",
+    backgroundColor: C.taupe,
+    marginBottom: 21,
+  },
+  dialogHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 17,
+  },
+  dialogIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.cream,
+  },
+  dialogIconError: { backgroundColor: C.redWash },
+  dialogIconWarning: { backgroundColor: C.redWash },
+  dialogClose: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.row,
+    borderRadius: 11,
+  },
+  dialogEyebrow: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.55,
+    color: C.slate,
+    marginBottom: 7,
+  },
+  dialogTitle: {
+    color: C.ink,
+    fontFamily: "Georgia",
+    fontSize: 26,
+    lineHeight: 32,
+    marginBottom: 10,
+  },
+  dialogMessage: {
+    color: C.muted,
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  dialogPrimaryButton: {
+    minHeight: 53,
+    borderRadius: 15,
+    backgroundColor: C.slate,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  dialogDangerButton: {
+    minHeight: 53,
+    borderRadius: 15,
+    backgroundColor: C.red,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  dialogPrimaryText: { fontSize: 14, fontWeight: "800", color: C.paper },
+  dialogSecondaryButton: {
+    minHeight: 49,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 7,
+  },
+  dialogSecondaryText: { color: C.slateDark, fontSize: 13, fontWeight: "700" },
 });

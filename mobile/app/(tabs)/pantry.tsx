@@ -55,6 +55,8 @@ import {
 
 const PANTRY_KEY = "pantry_items_v1";
 
+let nextPantryInstanceId = 0;
+
 type ExpiringRow = PantryItem & {
   categoryLabel: string;
 
@@ -68,29 +70,12 @@ type MenuCategory =
   | { type: "expired" }
   | { type: "expiring" };
 
-function buildEmptyPantry(): Record<CategoryKey, PantryItem[]> {
-  return ALL_CATEGORY_KEYS.reduce(
-    (acc, k) => {
-      acc[k] = [];
-
-      return acc;
-    },
-
-    {} as Record<CategoryKey, PantryItem[]>,
-  );
-}
-
-function isValidPantryShape(
-  v: unknown,
-): v is Record<CategoryKey, PantryItem[]> {
-  if (!v || typeof v !== "object") return false;
-
-  const obj = v as Record<string, unknown>;
-
-  return ALL_CATEGORY_KEYS.every((k) => Array.isArray(obj[k]));
-}
-
 export default function PantryScreen() {
+  const instanceId = useRef<number | null>(null);
+
+  if (instanceId.current === null) {
+    instanceId.current = ++nextPantryInstanceId;
+  }
   const [bulkExpiryOpen, setBulkExpiryOpen] = useState(false);
 
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
@@ -202,61 +187,6 @@ export default function PantryScreen() {
   const isSearching = q.length > 0;
 
   const allOpen = ALL_CATEGORY_KEYS.every((k) => openCategories[k]);
-
-  // -------------------- ✅ AsyncStorage (load) --------------------
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(PANTRY_KEY);
-
-        if (!raw) {
-          return;
-        }
-
-        const parsed = JSON.parse(raw);
-
-        if (cancelled) return;
-
-        if (isValidPantryShape(parsed)) {
-          setPantry(parsed);
-        } else {
-          setPantry(buildEmptyPantry());
-        }
-      } catch (e) {
-        console.warn("Failed to load pantry from storage", e);
-      } finally {
-        if (!cancelled) {
-          setPantryLoaded(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setPantry]);
-
-  // -------------------- ✅ AsyncStorage (save) --------------------
-  useEffect(() => {
-    if (!pantryLoaded) return;
-
-    const t = setTimeout(() => {
-      void (async () => {
-        try {
-          await AsyncStorage.setItem(PANTRY_KEY, JSON.stringify(pantry));
-
-          await syncExpiryReminders();
-        } catch (e) {
-          console.warn("Failed to save pantry or sync expiry reminders", e);
-        }
-      })();
-    }, 250);
-
-    return () => clearTimeout(t);
-  }, [pantry, pantryLoaded]);
-
   // -------------------- Undo timer --------------------
   useEffect(() => {
     if (!undo) return;

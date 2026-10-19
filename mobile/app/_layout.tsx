@@ -16,7 +16,8 @@ import { useSettingsStore } from "@/features/settings/store";
 import { toastConfig } from "@/components/kitchentoast";
 import { PremiumProvider } from "@/context/PremiumContext";
 import NotificationBootstrap from "@/components/NotificationBootstrap";
-
+import { usePantryStore } from "@/features/pantry/store";
+import { startPantryPersistence } from "@/features/pantry/persistence";
 export const unstable_settings = {
   anchor: "(tabs)",
 };
@@ -47,10 +48,15 @@ if (__DEV__) {
   };
 }
 
+useEffect(() => {
+  void startPantryPersistence().catch((error) => {
+    console.warn("Pantry initialization failed:", error);
+  });
+}, []);
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
-
+  const pantryHydrated = usePantryStore((s) => s.hydrated);
   useEffect(() => {
     (async () => {
       try {
@@ -80,7 +86,7 @@ export default function RootLayout() {
           </Stack>
 
           {/* Initialize KitchenBuddy notifications once at app startup */}
-          <NotificationBootstrap />
+          {pantryHydrated && <NotificationBootstrap />}
 
           <StatusBar style="auto" />
 

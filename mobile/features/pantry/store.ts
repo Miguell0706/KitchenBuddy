@@ -19,7 +19,8 @@ type PantryState = {
     id: string,
     patch: Partial<PantryItem>,
   ) => void;
-
+  hydrated: boolean;
+  hydrationError: string | null;
   // ✅ add these
   deleteItem: (categoryKey: CategoryKey, id: string) => void;
   markUsed: (categoryKey: CategoryKey, id: string) => void;
@@ -48,7 +49,8 @@ const normalizeItemPatch = (patch: Partial<PantryItem>) => {
 
 export const usePantryStore = create<PantryState>((set, get) => ({
   pantry: buildEmptyPantry(),
-
+  hydrated: false,
+  hydrationError: null,
   setPantry: (next) => {
     set((state) => {
       const nextPantry = typeof next === "function" ? next(state.pantry) : next;

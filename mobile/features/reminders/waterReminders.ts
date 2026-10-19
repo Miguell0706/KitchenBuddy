@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { ReminderSettings } from "./reminderStorage";
-import { ensureKitchenBuddyNotifications } from "./notificationSetup";
+import { ensureKitchenBuddyNotifications } from "./notificationRegistration";
 import {
   waterChannelId,
   WATER_CATEGORY,
