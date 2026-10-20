@@ -41,7 +41,7 @@ import {
   type IngredientImageOverride,
 } from "@/features/pantry/ingredientImageOverrides";
 
-import { addPantryItems } from "@/features/pantry/storage";
+import { commitPantryItemsBatch } from "@/features/pantry/persistence";
 
 import { appendPantryHistory } from "@/features/pantry/history";
 
@@ -64,8 +64,6 @@ import {
   parseReceiptNamesOnlyWithReport,
   type ParsedItem,
 } from "@/features/scan/parsing";
-
-import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
 
 type DraftScanItem = ParsedItem & {
   categoryKey?: CategoryKey;
@@ -314,6 +312,7 @@ export default function ScanEditScreen() {
   const [imageSaving, setImageSaving] = useState(false);
 
   const [pantrySaving, setPantrySaving] = useState(false);
+  const pantryCommitBusyRef = React.useRef(false);
 
   const categoryLabel = React.useCallback((key?: CategoryKey) => {
     return (
@@ -1124,56 +1123,72 @@ export default function ScanEditScreen() {
   }
 
   async function addSelectedToPantry() {
-    if (imageSaving || pantrySaving) return;
-
+    // The ref prevents double submissions before React rerenders the disabled button.
+    if (imageSaving || pantrySaving || pantryCommitBusyRef.current) return;
+    pantryCommitBusyRef.current = true;
     setPantrySaving(true);
 
     const chosen = items.filter(
       (i) => i.selected && (i.name ?? "").trim().length > 0,
     );
-
     if (chosen.length === 0) {
       Alert.alert("Nothing selected", "Select at least one item to add.");
-
+      pantryCommitBusyRef.current = false;
       setPantrySaving(false);
-
       return;
     }
 
+    const newPantryItems = toPantryItems(chosen);
+    console.log("addSelectedToPantry", { newPantryItems });
+
     try {
-      const newPantryItems = toPantryItems(chosen);
-
-      console.log("addSelectedToPantry", {
-        newPantryItems,
-      });
-
-      // Save items to pantry
-
-      await addPantryItems(newPantryItems);
-
-      // Record receipt purchases for pantry history + analytics
-
-      await Promise.all(
-        newPantryItems.map((item) =>
-          appendPantryHistory(item, "purchased", "receipt"),
-        ),
+      // ONE Zustand batch, ONE durable AsyncStorage write, and ONE incremental
+      // reminder pass. Do not navigate until the Pantry data is saved.
+      await commitPantryItemsBatch(newPantryItems);
+    } catch (error) {
+      console.warn("Receipt Pantry commit failed:", error);
+      Alert.alert(
+        "Save failed",
+        "Couldn't save pantry items. Please try again.",
       );
-
-      // Rebuild expiry notifications using updated pantry
-
-      await syncExpiryReminders();
-
-      // Save user's scan corrections
-
-      await saveFixesForUserEdits(chosen);
-
-      router.replace("/(tabs)/pantry");
-    } catch (e) {
-      console.log("addSelectedToPantry failed:", e);
-
-      Alert.alert("Save failed", "Couldn't save pantry items. Try again.");
-    } finally {
+      pantryCommitBusyRef.current = false;
       setPantrySaving(false);
+      return;
+    }
+
+    // Pantry is safely saved. Keep history and scan corrections independent:
+    // failure here must not falsely tell the user their Pantry was not saved.
+    let historyFailures = 0;
+    for (const item of newPantryItems) {
+      try {
+        // Sequential: supports history implementations using read/modify/write.
+        await appendPantryHistory(item, "purchased", "receipt");
+      } catch (error) {
+        historyFailures++;
+        console.warn(
+          "Unable to record receipt purchase history:",
+          item.id,
+          error,
+        );
+      }
+    }
+    try {
+      await saveFixesForUserEdits(chosen);
+    } catch (error) {
+      console.warn(
+        "Pantry saved but scan corrections could not be saved:",
+        error,
+      );
+    }
+
+    pantryCommitBusyRef.current = false;
+    setPantrySaving(false);
+    router.replace("/(tabs)/pantry");
+    if (historyFailures > 0) {
+      Alert.alert(
+        "Pantry saved",
+        `${historyFailures} purchase-history ${historyFailures === 1 ? "entry" : "entries"} could not be recorded.`,
+      );
     }
   }
 
