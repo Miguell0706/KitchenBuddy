@@ -50,12 +50,16 @@ import type {
   IngredientImage,
   PantryItem,
 } from "@/features/pantry/types";
-import { addPantryItems, loadPantry } from "@/features/pantry/storage";
+import { loadPantry } from "@/features/pantry/storage";
+import {
+  startPantryPersistence,
+  flushPantryPersistence,
+  commitPantryItemsBatch,
+} from "@/features/pantry/persistence";
 import {
   appendPantryHistory,
   getPantryHistory,
 } from "@/features/pantry/history";
-import { syncExpiryReminders } from "@/features/reminders/pantryReminderSync";
 import { useSettingsStore } from "@/features/settings/store";
 
 // Reuse the existing backend images route. The Pexels search stays landscape.
@@ -682,13 +686,20 @@ export default function ShoppingFinishScreen() {
         null,
     }));
 
-    // Deterministic IDs plus a fresh pantry check make interrupted saves retryable.
+    // One authoritative Pantry writer: first hydrate and drain pending edits
+    // before checking which deterministic Shopping IDs are already persisted.
+    // This preserves retry safety without competing AsyncStorage writes.
+    await startPantryPersistence();
+    await flushPantryPersistence();
     const existing = await loadPantry();
     const existingIds = new Set(
       (Object.values(existing).flat() as PantryItem[]).map((item) => item.id),
     );
     const missing = pantryItems.filter((item) => !existingIds.has(item.id));
-    if (missing.length) await addPantryItems(missing);
+    if (missing.length) {
+      // One Zustand update, one durable save and one incremental reminder pass.
+      await commitPantryItemsBatch(missing);
+    }
 
     // Verify the pantry write before logging purchases or clearing groceries.
     const persisted = await loadPantry();
@@ -723,15 +734,8 @@ export default function ShoppingFinishScreen() {
       (item) => !(purchasedIds.has(item.id) && item.checked),
     );
     await AsyncStorage.setItem(GROCERY_STORAGE_KEY, JSON.stringify(remaining));
-    try {
-      await syncExpiryReminders();
-    } catch (error) {
-      // The purchases were already saved and the list updated successfully.
-      console.warn(
-        "Shopping transferred; reminder sync will need retry",
-        error,
-      );
-    }
+    // commitPantryItemsBatch already requested incremental reminder scheduling
+    // through the single writer; do not run a second full reconciliation.
     return { purchased: pantryItems.length, left: remaining.length };
   }
 
