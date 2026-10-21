@@ -9,6 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
+import {
+  previewNotificationRepairs,
+  repairNotificationIntegrity,
+  LEGACY_REPAIR_CONFIRMATION,
+  type IntegrityPreview,
+} from "@/features/reminders/notificationIntegrity";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +22,15 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import { recognizeText } from "@infinitered/react-native-mlkit-text-recognition";
 import { addScanHistoryEntry } from "@/features/scan/historyStorage";
+import { logNotificationAudit } from "@/features/reminders/notificationAudit";
+
+import { usePantryStore } from "@/features/pantry/store";
+import { loadReminderSettings } from "@/features/reminders/reminderStorage";
+
+import {
+  buildHybridExpiryPlan,
+  summarizeHybridExpiryPlan,
+} from "@/features/reminders/hybridExpiryPlanner";
 
 type OcrPhase = "idle" | "preparing" | "reading" | "parsing" | "done";
 type OcrHealth = {
@@ -92,7 +107,7 @@ export default function ScanScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const pct = Math.round(progress * 100);
   const phaseLabel = useMemo(() => phaseCopy[phase], [phase]);
-
+  const integrityPreviewRef = React.useRef<IntegrityPreview | null>(null);
   useEffect(() => {
     return () => {
       runIdRef.current += 1;
@@ -205,6 +220,24 @@ export default function ScanScreen() {
         "Couldn't open your photos. Please try again.",
       );
     }
+  }
+
+  async function previewHybridExpiry() {
+    const store = usePantryStore.getState();
+
+    if (!store.hydrated || store.hydrationError) {
+      console.warn("[KB Hybrid Planner] Pantry not hydrated yet.");
+      return;
+    }
+
+    const settings = await loadReminderSettings();
+
+    const plan = buildHybridExpiryPlan(store.pantry, settings);
+
+    console.log(
+      "[KB Hybrid Planner] PREVIEW ONLY",
+      summarizeHybridExpiryPlan(plan),
+    );
   }
 
   async function takePhoto() {
@@ -320,6 +353,83 @@ export default function ScanScreen() {
         </Pressable>
       </View>
 
+      {__DEV__ && (
+        <Pressable
+          onPress={() => void previewHybridExpiry().catch(console.warn)}
+        >
+          <Text>Preview Hybrid Notifications</Text>
+        </Pressable>
+      )}
+
+      {__DEV__ && (
+        <Pressable
+          onPress={() => {
+            void (async () => {
+              try {
+                const preview = await previewNotificationRepairs();
+                integrityPreviewRef.current = preview;
+                Alert.alert(
+                  "Notification repair preview",
+                  `${preview.audit.pending.total} pending. ` +
+                    `${preview.eligible.length} verified legacy regular request(s) eligible. ` +
+                    `${preview.protectedLegacy.legacy_follow_up} legacy follow-up(s) protected. ` +
+                    `No changes made.`,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Remove verified old requests",
+                      style: "destructive",
+                      onPress: () => {
+                        void (async () => {
+                          try {
+                            const approved = integrityPreviewRef.current;
+                            if (!approved)
+                              throw new Error("Please preview first.");
+                            const result = await repairNotificationIntegrity(
+                              approved,
+                              LEGACY_REPAIR_CONFIRMATION,
+                            );
+                            integrityPreviewRef.current = null;
+                            Alert.alert(
+                              "Repair verified",
+                              `Removed ${result.cancelled}. ` +
+                                `${result.after.audit.pending.total} now pending; ` +
+                                `${result.after.audit.tracking.untrackedPending} still untracked.`,
+                            );
+                          } catch (error) {
+                            integrityPreviewRef.current = null;
+                            Alert.alert(
+                              "Repair not completed",
+                              error instanceof Error
+                                ? error.message
+                                : String(error),
+                            );
+                          }
+                        })();
+                      },
+                    },
+                  ],
+                );
+              } catch (error) {
+                integrityPreviewRef.current = null;
+                Alert.alert(
+                  "Integrity audit failed",
+                  error instanceof Error ? error.message : String(error),
+                );
+              }
+            })();
+          }}
+        >
+          <Text>Preview legacy expiry cleanup</Text>
+        </Pressable>
+      )}
+      {__DEV__ && (
+        <Pressable
+          onPress={() => void logNotificationAudit().catch(console.warn)}
+        >
+          <Text>Audit pending notifications</Text>
+        </Pressable>
+      )}
       <Pressable
         accessibilityRole="switch"
         accessibilityState={{ checked: cropBeforeOCR, disabled: isRunning }}

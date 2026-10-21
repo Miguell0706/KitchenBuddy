@@ -151,3 +151,8 @@ export function scheduleWaterSnooze(settings: ReminderSettings): Promise<void> {
     await AsyncStorage.setItem(WATER_NOTIFICATION_IDS_KEY, JSON.stringify(ids));
   });
 }
+
+/** Stage 4D: a read barrier for the independent water/snooze scheduling queue. */
+export function waitForWaterReminderIdle(): Promise<void> {
+  return serialize(async () => undefined);
+}

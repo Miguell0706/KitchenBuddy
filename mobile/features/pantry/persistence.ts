@@ -2,11 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ALL_CATEGORY_KEYS } from "./constants";
 import { usePantryStore } from "./store";
 import type { CategoryKey, PantryItem } from "./types";
-import {
-  syncExpiryReminders,
-  syncExpiryRemindersIncremental,
-} from "@/features/reminders/pantryReminderSync";
+import { syncExpiryRemindersIncremental } from "@/features/reminders/pantryReminderSync";
 
+import { startNotificationMaintenance } from "@/features/reminders/notificationMaintenance";
 const PANTRY_KEY = "pantry_items_v1";
 type PantryData = Record<CategoryKey, PantryItem[]>;
 
@@ -147,13 +145,11 @@ export function startPantryPersistence(): Promise<void> {
     usePantryStore.setState({ hydrated: true, hydrationError: null });
     if (__DEV__) console.log("[KB Pantry] Persistence initialized.");
 
-    // Recovery/startup verifies pending OS notifications without blindly
-    // recreating unchanged reminders. This remains the full-sync path.
-    void syncExpiryReminders().catch((error) => {
-      console.warn(
-        "[KB Pantry] Startup reminder reconciliation failed:",
-        error,
-      );
+    // Stage 4D: start automatic notification maintenance after Pantry hydration.
+    // The coordinator handles startup reconciliation and foreground recovery.
+    // Keep this fire-and-forget so notification failures cannot block Pantry startup.
+    startNotificationMaintenance({
+      waitForPantryWrites: flushPantryPersistence,
     });
   })().catch((error) => {
     startPromise = null;

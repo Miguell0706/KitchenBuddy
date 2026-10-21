@@ -15,7 +15,8 @@ import * as Haptics from "expo-haptics";
 
 import { Ionicons } from "@expo/vector-icons";
 
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { parseGroupedReminderIds } from "@/features/reminders/groupedReminderRoute";
 
 import {
   CATEGORIES,
@@ -100,6 +101,36 @@ export default function PantryScreen() {
   const pantry = usePantryStore((s) => s.pantry);
 
   const setPantry = usePantryStore((s) => s.setPantry);
+
+  // Stage 4E: a notification supplies IDs, never names. This intentionally
+  // ignores search and the <=7-day expiring section: the alert may be opened
+  // later, after some ingredients have expired or been removed.
+  const reminderParams = useLocalSearchParams<{
+    kbGroupIds?: string | string[];
+    kbNotificationId?: string | string[];
+  }>();
+  const groupedIds = useMemo(
+    () => parseGroupedReminderIds(reminderParams.kbGroupIds),
+    [reminderParams.kbGroupIds],
+  );
+  const groupView = groupedIds !== null;
+  const groupedItems = useMemo(() => {
+    if (!groupedIds) return [] as PantryItem[];
+    const byId = new Map<string, PantryItem>();
+    for (const category of ALL_CATEGORY_KEYS) {
+      for (const item of pantry[category]) byId.set(item.id, item);
+    }
+    return groupedIds
+      .map((id) => byId.get(id))
+      .filter((item): item is PantryItem => Boolean(item));
+  }, [pantry, groupedIds]);
+  const missingGroupedCount = groupedIds
+    ? groupedIds.length - groupedItems.length
+    : 0;
+  const clearGroupView = () => {
+    // Clearing the route params also prevents stale group filters on later tab visits.
+    router.setParams({ kbGroupIds: "", kbNotificationId: "" });
+  };
 
   const [undo, setUndo] = useState<{
     item: PantryItem;
@@ -832,138 +863,53 @@ export default function PantryScreen() {
           </View>
         </View>
 
-        <View style={styles.searchWrap}>
-          <Ionicons name="search-outline" size={19} color={PALETTE.muted} />
-          <TextInput
-            placeholder="Search your pantry"
-            placeholderTextColor={PALETTE.muted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCorrect={false}
-            autoCapitalize="none"
-            clearButtonMode="while-editing"
-            style={styles.searchInput}
-            accessibilityLabel="Search pantry items"
-          />
-          {isSearching && (
-            <Pressable
-              onPress={() => setSearchQuery("")}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Clear pantry search"
-            >
-              <Ionicons name="close-circle" size={19} color={PALETTE.muted} />
-            </Pressable>
-          )}
-        </View>
-        {isSearching && (
-          <Text style={styles.searchCaption}>
-            {visibleItemCount} matching{" "}
-            {visibleItemCount === 1 ? "item" : "items"} for “
-            {searchQuery.trim()}”
-          </Text>
-        )}
-
-        <View style={styles.toolbar}>
-          <Pressable
-            onPress={toggleBulkMode}
-            accessibilityRole="button"
-            accessibilityState={{ selected: bulkMode }}
-            style={[styles.toolButton, bulkMode && styles.toolButtonActive]}
-          >
-            <Ionicons
-              name={bulkMode ? "checkbox" : "checkbox-outline"}
-              size={17}
-              color={bulkMode ? PALETTE.paper : PALETTE.slate}
-            />
-            <Text style={[styles.toolText, bulkMode && styles.toolTextActive]}>
-              {bulkMode ? `Selected (${selectedCount})` : "Select"}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setQuickAddOpen(true)}
-            accessibilityRole="button"
-            style={styles.toolButton}
-          >
-            <Ionicons
-              name="add-circle-outline"
-              size={18}
-              color={PALETTE.slate}
-            />
-            <Text style={styles.toolText}>Quick add</Text>
-          </Pressable>
-          <Pressable
-            onPress={toggleAll}
-            accessibilityRole="button"
-            style={styles.toolButton}
-          >
-            <Ionicons
-              name={allOpen ? "contract-outline" : "expand-outline"}
-              size={17}
-              color={PALETTE.slate}
-            />
-            <Text style={styles.toolText}>
-              {allOpen ? "Collapse" : "Expand"}
-            </Text>
-          </Pressable>
-        </View>
-
-        {expiredItems.length > 0 && (
-          <View style={styles.sectionWrap}>
-            <View style={[styles.sectionHeaderCard, styles.expiredHeader]}>
-              <Pressable
-                onPress={() => setOpenExpired((v) => !v)}
-                style={styles.sectionHeaderMain}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: openExpired }}
-              >
-                <View style={[styles.sectionIcon, styles.expiredIcon]}>
-                  <Ionicons
-                    name="time-outline"
-                    size={20}
-                    color={PALETTE.expired}
-                  />
-                </View>
-                <View style={styles.sectionHeadingCopy}>
-                  <Text style={styles.sectionHeading}>Expired</Text>
-                  <Text style={styles.sectionCount}>
-                    {expiredItems.length}{" "}
-                    {expiredItems.length === 1 ? "item" : "items"} to review
+        {groupView ? (
+          <View style={styles.reminderSection}>
+            <View style={styles.reminderHeader}>
+              <View style={styles.reminderHeading}>
+                <Ionicons
+                  name="notifications-outline"
+                  size={19}
+                  color={PALETTE.slateDark}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reminderTitle}>Your expiry reminder</Text>
+                  <Text style={styles.reminderSubtitle}>
+                    {groupedItems.length} of {groupedIds.length} ingredients
+                    still in Pantry
                   </Text>
                 </View>
-                <Ionicons
-                  name={openExpired ? "chevron-up" : "chevron-down"}
-                  size={18}
-                  color={PALETTE.muted}
-                />
-              </Pressable>
+              </View>
               <Pressable
-                onPress={() => showCategoryMenu({ type: "expired" })}
-                style={styles.sectionMenu}
+                onPress={clearGroupView}
                 accessibilityRole="button"
-                accessibilityLabel="Expired items options"
-                hitSlop={8}
+                accessibilityLabel="Show full pantry"
+                style={styles.reminderClearButton}
               >
-                <Ionicons
-                  name="ellipsis-vertical"
-                  size={19}
-                  color={PALETTE.muted}
-                />
+                <Text style={styles.reminderClearText}>All Pantry</Text>
+                <Ionicons name="close" size={15} color={PALETTE.slateDark} />
               </Pressable>
             </View>
-            {openExpired && (
+            {missingGroupedCount > 0 && (
+              <Text style={styles.reminderNote}>
+                {missingGroupedCount}{" "}
+                {missingGroupedCount === 1
+                  ? "ingredient is"
+                  : "ingredients are"}{" "}
+                no longer in your Pantry and{" "}
+                {missingGroupedCount === 1 ? "was" : "were"} omitted.
+              </Text>
+            )}
+            {groupedItems.length ? (
               <View style={styles.itemList}>
-                {expiredItems.map((item) => (
+                {groupedItems.map((item) => (
                   <PantryRow
                     key={`${item.categoryKey}:${item.id}`}
                     item={item}
-                    bulkMode={bulkMode}
-                    isSearching={isSearching}
-                    checked={isSelected(item.categoryKey, item.id)}
-                    onToggleSelect={() => {
-                      void Haptics.selectionAsync();
-                      toggleSelected(item.categoryKey, item.id);
-                    }}
+                    bulkMode={false}
+                    isSearching={false}
+                    checked={false}
+                    onToggleSelect={() => undefined}
                     onPressUsed={() => handleMarkUsed(item)}
                     onPressEdit={() => openEdit(item.categoryKey, item.id)}
                     onPressDelete={() => openRemovalSheet(item)}
@@ -971,192 +917,368 @@ export default function PantryScreen() {
                   />
                 ))}
               </View>
-            )}
-          </View>
-        )}
-
-        {expiringSoon.length > 0 && (
-          <View style={styles.sectionWrap}>
-            <View style={[styles.sectionHeaderCard, styles.expiringHeader]}>
-              <Pressable
-                onPress={() => setOpenExpiring((v) => !v)}
-                style={styles.sectionHeaderMain}
-                accessibilityRole="button"
-                accessibilityState={{ expanded: openExpiring }}
-              >
-                <View style={[styles.sectionIcon, styles.expiringIcon]}>
-                  <Ionicons
-                    name="alarm-outline"
-                    size={20}
-                    color={PALETTE.amber}
-                  />
-                </View>
-                <View style={styles.sectionHeadingCopy}>
-                  <Text style={styles.sectionHeading}>Expiring soon</Text>
-                  <Text style={styles.sectionCount}>
-                    {expiringSoon.length}{" "}
-                    {expiringSoon.length === 1 ? "item" : "items"} within 7 days
-                  </Text>
-                </View>
+            ) : (
+              <View style={styles.reminderEmpty}>
                 <Ionicons
-                  name={openExpiring ? "chevron-up" : "chevron-down"}
-                  size={18}
-                  color={PALETTE.muted}
+                  name="checkmark-circle-outline"
+                  size={26}
+                  color={PALETTE.slate}
                 />
-              </Pressable>
-              <Pressable
-                onPress={() => showCategoryMenu({ type: "expiring" })}
-                style={styles.sectionMenu}
-                accessibilityRole="button"
-                accessibilityLabel="Expiring soon options"
-                hitSlop={8}
-              >
-                <Ionicons
-                  name="ellipsis-vertical"
-                  size={19}
-                  color={PALETTE.muted}
-                />
-              </Pressable>
-            </View>
-            {openExpiring && (
-              <View style={styles.itemList}>
-                {expiringSoon.map((item) => (
-                  <PantryRow
-                    key={`${item.categoryKey}:${item.id}`}
-                    item={item}
-                    bulkMode={bulkMode}
-                    isSearching={isSearching}
-                    checked={isSelected(item.categoryKey, item.id)}
-                    onToggleSelect={() => {
-                      void Haptics.selectionAsync();
-                      toggleSelected(item.categoryKey, item.id);
-                    }}
-                    onPressUsed={() => handleMarkUsed(item)}
-                    onPressEdit={() => openEdit(item.categoryKey, item.id)}
-                    onPressDelete={() => openRemovalSheet(item)}
-                    onSwipeDelete={() => openRemovalSheet(item)}
-                  />
-                ))}
+                <Text style={styles.reminderTitle}>Nothing left to review</Text>
+                <Text style={styles.reminderNote}>
+                  These ingredients have already been removed or used.
+                </Text>
               </View>
             )}
           </View>
-        )}
-
-        <View style={styles.groupHeadingRow}>
-          <View>
-            <Text style={styles.eyebrow}>BROWSE YOUR FOOD</Text>
-            <Text style={styles.groupHeading}>Categories</Text>
-          </View>
-          <Text style={styles.groupHeadingMeta}>
-            {isSearching
-              ? `${visibleCategories.length} matching`
-              : `${CATEGORIES.length} groups`}
-          </Text>
-        </View>
-
-        {visibleCategories.map(({ cat, items: categoryItems }) => {
-          const isOpen = openCategories[cat.key];
-          return (
-            <View key={cat.key} style={styles.sectionWrap}>
-              <View style={styles.sectionHeaderCard}>
+        ) : (
+          <>
+            <View style={styles.searchWrap}>
+              <Ionicons name="search-outline" size={19} color={PALETTE.muted} />
+              <TextInput
+                placeholder="Search your pantry"
+                placeholderTextColor={PALETTE.muted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCorrect={false}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+                style={styles.searchInput}
+                accessibilityLabel="Search pantry items"
+              />
+              {isSearching && (
                 <Pressable
-                  onPress={() => toggleCategory(cat.key)}
-                  style={styles.sectionHeaderMain}
+                  onPress={() => setSearchQuery("")}
+                  hitSlop={10}
                   accessibilityRole="button"
-                  accessibilityState={{ expanded: isOpen }}
-                >
-                  <View style={styles.sectionIcon}>
-                    <Ionicons name={cat.icon} size={20} color={PALETTE.slate} />
-                  </View>
-                  <View style={styles.sectionHeadingCopy}>
-                    <Text style={styles.sectionHeading}>{cat.label}</Text>
-                    <Text style={styles.sectionCount}>
-                      {categoryItems.length}{" "}
-                      {categoryItems.length === 1 ? "item" : "items"}
-                      {isSearching &&
-                      pantry[cat.key].length !== categoryItems.length
-                        ? ` · ${pantry[cat.key].length} total`
-                        : ""}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name={isOpen ? "chevron-up" : "chevron-down"}
-                    size={18}
-                    color={PALETTE.muted}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={() => showCategoryMenu({ type: "normal", cat })}
-                  style={styles.sectionMenu}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${cat.label} options`}
-                  hitSlop={8}
+                  accessibilityLabel="Clear pantry search"
                 >
                   <Ionicons
-                    name="ellipsis-vertical"
+                    name="close-circle"
                     size={19}
                     color={PALETTE.muted}
                   />
                 </Pressable>
-              </View>
-              {isOpen && categoryItems.length > 0 && (
-                <View style={styles.itemList}>
-                  {categoryItems
-                    .slice()
-                    .sort((a, b) => getExpiresInDays(a) - getExpiresInDays(b))
-                    .map((item) => (
+              )}
+            </View>
+            {isSearching && (
+              <Text style={styles.searchCaption}>
+                {visibleItemCount} matching{" "}
+                {visibleItemCount === 1 ? "item" : "items"} for “
+                {searchQuery.trim()}”
+              </Text>
+            )}
+
+            <View style={styles.toolbar}>
+              <Pressable
+                onPress={toggleBulkMode}
+                accessibilityRole="button"
+                accessibilityState={{ selected: bulkMode }}
+                style={[styles.toolButton, bulkMode && styles.toolButtonActive]}
+              >
+                <Ionicons
+                  name={bulkMode ? "checkbox" : "checkbox-outline"}
+                  size={17}
+                  color={bulkMode ? PALETTE.paper : PALETTE.slate}
+                />
+                <Text
+                  style={[styles.toolText, bulkMode && styles.toolTextActive]}
+                >
+                  {bulkMode ? `Selected (${selectedCount})` : "Select"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setQuickAddOpen(true)}
+                accessibilityRole="button"
+                style={styles.toolButton}
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={18}
+                  color={PALETTE.slate}
+                />
+                <Text style={styles.toolText}>Quick add</Text>
+              </Pressable>
+              <Pressable
+                onPress={toggleAll}
+                accessibilityRole="button"
+                style={styles.toolButton}
+              >
+                <Ionicons
+                  name={allOpen ? "contract-outline" : "expand-outline"}
+                  size={17}
+                  color={PALETTE.slate}
+                />
+                <Text style={styles.toolText}>
+                  {allOpen ? "Collapse" : "Expand"}
+                </Text>
+              </Pressable>
+            </View>
+
+            {expiredItems.length > 0 && (
+              <View style={styles.sectionWrap}>
+                <View style={[styles.sectionHeaderCard, styles.expiredHeader]}>
+                  <Pressable
+                    onPress={() => setOpenExpired((v) => !v)}
+                    style={styles.sectionHeaderMain}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: openExpired }}
+                  >
+                    <View style={[styles.sectionIcon, styles.expiredIcon]}>
+                      <Ionicons
+                        name="time-outline"
+                        size={20}
+                        color={PALETTE.expired}
+                      />
+                    </View>
+                    <View style={styles.sectionHeadingCopy}>
+                      <Text style={styles.sectionHeading}>Expired</Text>
+                      <Text style={styles.sectionCount}>
+                        {expiredItems.length}{" "}
+                        {expiredItems.length === 1 ? "item" : "items"} to review
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={openExpired ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color={PALETTE.muted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => showCategoryMenu({ type: "expired" })}
+                    style={styles.sectionMenu}
+                    accessibilityRole="button"
+                    accessibilityLabel="Expired items options"
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="ellipsis-vertical"
+                      size={19}
+                      color={PALETTE.muted}
+                    />
+                  </Pressable>
+                </View>
+                {openExpired && (
+                  <View style={styles.itemList}>
+                    {expiredItems.map((item) => (
                       <PantryRow
-                        key={`${cat.key}:${item.id}`}
+                        key={`${item.categoryKey}:${item.id}`}
                         item={item}
                         bulkMode={bulkMode}
                         isSearching={isSearching}
-                        checked={isSelected(cat.key, item.id)}
+                        checked={isSelected(item.categoryKey, item.id)}
                         onToggleSelect={() => {
                           void Haptics.selectionAsync();
-                          toggleSelected(cat.key, item.id);
+                          toggleSelected(item.categoryKey, item.id);
                         }}
                         onPressUsed={() => handleMarkUsed(item)}
-                        onPressEdit={() => openEdit(cat.key, item.id)}
+                        onPressEdit={() => openEdit(item.categoryKey, item.id)}
                         onPressDelete={() => openRemovalSheet(item)}
                         onSwipeDelete={() => openRemovalSheet(item)}
                       />
                     ))}
-                </View>
-              )}
-              {isOpen && categoryItems.length === 0 && !isSearching && (
-                <View style={styles.emptyCategory}>
-                  <Ionicons
-                    name="leaf-outline"
-                    size={17}
-                    color={PALETTE.muted}
-                  />
-                  <Text style={styles.emptyCategoryText}>
-                    Nothing here yet. Add an item anytime.
-                  </Text>
-                </View>
-              )}
-            </View>
-          );
-        })}
+                  </View>
+                )}
+              </View>
+            )}
 
-        {isSearching &&
-          expiredItems.length === 0 &&
-          expiringSoon.length === 0 &&
-          visibleCategories.length === 0 && (
-            <View style={styles.emptySearchCard}>
-              <Ionicons name="search-outline" size={27} color={PALETTE.slate} />
-              <Text style={styles.emptySearchTitle}>No matching items</Text>
-              <Text style={styles.emptySearchText}>
-                Try a different name or clear the search.
+            {expiringSoon.length > 0 && (
+              <View style={styles.sectionWrap}>
+                <View style={[styles.sectionHeaderCard, styles.expiringHeader]}>
+                  <Pressable
+                    onPress={() => setOpenExpiring((v) => !v)}
+                    style={styles.sectionHeaderMain}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: openExpiring }}
+                  >
+                    <View style={[styles.sectionIcon, styles.expiringIcon]}>
+                      <Ionicons
+                        name="alarm-outline"
+                        size={20}
+                        color={PALETTE.amber}
+                      />
+                    </View>
+                    <View style={styles.sectionHeadingCopy}>
+                      <Text style={styles.sectionHeading}>Expiring soon</Text>
+                      <Text style={styles.sectionCount}>
+                        {expiringSoon.length}{" "}
+                        {expiringSoon.length === 1 ? "item" : "items"} within 7
+                        days
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={openExpiring ? "chevron-up" : "chevron-down"}
+                      size={18}
+                      color={PALETTE.muted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => showCategoryMenu({ type: "expiring" })}
+                    style={styles.sectionMenu}
+                    accessibilityRole="button"
+                    accessibilityLabel="Expiring soon options"
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="ellipsis-vertical"
+                      size={19}
+                      color={PALETTE.muted}
+                    />
+                  </Pressable>
+                </View>
+                {openExpiring && (
+                  <View style={styles.itemList}>
+                    {expiringSoon.map((item) => (
+                      <PantryRow
+                        key={`${item.categoryKey}:${item.id}`}
+                        item={item}
+                        bulkMode={bulkMode}
+                        isSearching={isSearching}
+                        checked={isSelected(item.categoryKey, item.id)}
+                        onToggleSelect={() => {
+                          void Haptics.selectionAsync();
+                          toggleSelected(item.categoryKey, item.id);
+                        }}
+                        onPressUsed={() => handleMarkUsed(item)}
+                        onPressEdit={() => openEdit(item.categoryKey, item.id)}
+                        onPressDelete={() => openRemovalSheet(item)}
+                        onSwipeDelete={() => openRemovalSheet(item)}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={styles.groupHeadingRow}>
+              <View>
+                <Text style={styles.eyebrow}>BROWSE YOUR FOOD</Text>
+                <Text style={styles.groupHeading}>Categories</Text>
+              </View>
+              <Text style={styles.groupHeadingMeta}>
+                {isSearching
+                  ? `${visibleCategories.length} matching`
+                  : `${CATEGORIES.length} groups`}
               </Text>
-              <Pressable
-                onPress={() => setSearchQuery("")}
-                style={styles.emptySearchButton}
-              >
-                <Text style={styles.emptySearchButtonText}>Clear search</Text>
-              </Pressable>
             </View>
-          )}
+
+            {visibleCategories.map(({ cat, items: categoryItems }) => {
+              const isOpen = openCategories[cat.key];
+              return (
+                <View key={cat.key} style={styles.sectionWrap}>
+                  <View style={styles.sectionHeaderCard}>
+                    <Pressable
+                      onPress={() => toggleCategory(cat.key)}
+                      style={styles.sectionHeaderMain}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: isOpen }}
+                    >
+                      <View style={styles.sectionIcon}>
+                        <Ionicons
+                          name={cat.icon}
+                          size={20}
+                          color={PALETTE.slate}
+                        />
+                      </View>
+                      <View style={styles.sectionHeadingCopy}>
+                        <Text style={styles.sectionHeading}>{cat.label}</Text>
+                        <Text style={styles.sectionCount}>
+                          {categoryItems.length}{" "}
+                          {categoryItems.length === 1 ? "item" : "items"}
+                          {isSearching &&
+                          pantry[cat.key].length !== categoryItems.length
+                            ? ` · ${pantry[cat.key].length} total`
+                            : ""}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={isOpen ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color={PALETTE.muted}
+                      />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => showCategoryMenu({ type: "normal", cat })}
+                      style={styles.sectionMenu}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${cat.label} options`}
+                      hitSlop={8}
+                    >
+                      <Ionicons
+                        name="ellipsis-vertical"
+                        size={19}
+                        color={PALETTE.muted}
+                      />
+                    </Pressable>
+                  </View>
+                  {isOpen && categoryItems.length > 0 && (
+                    <View style={styles.itemList}>
+                      {categoryItems
+                        .slice()
+                        .sort(
+                          (a, b) => getExpiresInDays(a) - getExpiresInDays(b),
+                        )
+                        .map((item) => (
+                          <PantryRow
+                            key={`${cat.key}:${item.id}`}
+                            item={item}
+                            bulkMode={bulkMode}
+                            isSearching={isSearching}
+                            checked={isSelected(cat.key, item.id)}
+                            onToggleSelect={() => {
+                              void Haptics.selectionAsync();
+                              toggleSelected(cat.key, item.id);
+                            }}
+                            onPressUsed={() => handleMarkUsed(item)}
+                            onPressEdit={() => openEdit(cat.key, item.id)}
+                            onPressDelete={() => openRemovalSheet(item)}
+                            onSwipeDelete={() => openRemovalSheet(item)}
+                          />
+                        ))}
+                    </View>
+                  )}
+                  {isOpen && categoryItems.length === 0 && !isSearching && (
+                    <View style={styles.emptyCategory}>
+                      <Ionicons
+                        name="leaf-outline"
+                        size={17}
+                        color={PALETTE.muted}
+                      />
+                      <Text style={styles.emptyCategoryText}>
+                        Nothing here yet. Add an item anytime.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            {isSearching &&
+              expiredItems.length === 0 &&
+              expiringSoon.length === 0 &&
+              visibleCategories.length === 0 && (
+                <View style={styles.emptySearchCard}>
+                  <Ionicons
+                    name="search-outline"
+                    size={27}
+                    color={PALETTE.slate}
+                  />
+                  <Text style={styles.emptySearchTitle}>No matching items</Text>
+                  <Text style={styles.emptySearchText}>
+                    Try a different name or clear the search.
+                  </Text>
+                  <Pressable
+                    onPress={() => setSearchQuery("")}
+                    style={styles.emptySearchButton}
+                  >
+                    <Text style={styles.emptySearchButtonText}>
+                      Clear search
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+          </>
+        )}
         <Text style={styles.footer}>KITCHENBUDDY · A LITTLE LESS WASTE</Text>
       </ScrollView>
 
@@ -1693,6 +1815,37 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 18, paddingTop: 17, paddingBottom: 48 },
   scrollContentWithAction: { paddingBottom: 218 },
+  reminderSection: {
+    padding: 16,
+    backgroundColor: "#FFFEFB",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E9E5DE",
+    marginBottom: 18,
+    gap: 12,
+  },
+  reminderHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  reminderHeading: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  reminderTitle: { color: "#292D2C", fontSize: 15, fontWeight: "700" },
+  reminderSubtitle: { color: "#747571", fontSize: 11, marginTop: 4 },
+  reminderClearButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "#E8E2DA",
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+  },
+  reminderClearText: { color: "#485F6A", fontSize: 11, fontWeight: "700" },
+  reminderNote: { color: "#747571", fontSize: 12, lineHeight: 18 },
+  reminderEmpty: { paddingVertical: 26, alignItems: "center", gap: 8 },
+
   hero: {
     backgroundColor: PALETTE.slateDark,
     borderRadius: 25,
