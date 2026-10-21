@@ -5,7 +5,7 @@ import { router } from "expo-router";
 
 import { useRecipesStore } from "@/features/recipes/store";
 import { usePantryStore } from "@/features/pantry/store";
-import { usePremiumStore } from "@/features/premium/store";
+import { usePremium } from "@/context/PremiumContext";
 import type { PantryItem } from "@/features/pantry/types";
 
 const PALETTE = {
@@ -85,7 +85,8 @@ function IconTile({ icon, dark = false }: { icon: IconName; dark?: boolean }) {
 const RecipesScreen: React.FC = () => {
   const recipes = useRecipesStore((s) => s.saved);
   const pantryByCategory = usePantryStore((s) => s.pantry);
-  const isPremium = usePremiumStore((s) => s.isPremium);
+  // Use the same Premium context as Ingredient Builder.
+  const { isPremium, isLoading: premiumLoading } = usePremium();
 
   const pantryItems = useMemo(
     () => Object.values(pantryByCategory).flat(),
@@ -106,20 +107,15 @@ const RecipesScreen: React.FC = () => {
 
   function handleExpiringSoon() {
     const ids = expiringSoon.map((it) => it.id);
-    console.log("🔥 handleUseExpiring ids:", ids);
     router.push({
       pathname: "/recipes/expiring",
       params: { itemIds: JSON.stringify(ids) },
     });
   }
 
-  function handleQuickMeals() {
-    router.push("/recipes/quick");
-  }
-
   function handleIngredientBuilder() {
+    if (premiumLoading) return;
     if (!isPremium) {
-      // Direct locked users to the existing Premium information / test-access page.
       router.push("/settings/premium");
       return;
     }
@@ -286,58 +282,37 @@ const RecipesScreen: React.FC = () => {
               color={PALETTE.slateDark}
             />
           </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Explore quick meals"
-            onPress={handleQuickMeals}
-            style={({ pressed }) => [
-              styles.ideaCard,
-              pressed && styles.pressed,
-            ]}
-          >
-            <IconTile icon="flash-outline" />
-            <View style={styles.ideaCopy}>
-              <Text style={styles.cardTitle}>Quick meals</Text>
-              <Text style={styles.cardDescription}>
-                Simple meal ideas for busy nights, with fewer ingredients and
-                less prep.
-              </Text>
-              <View style={styles.smallPill}>
-                <Text style={styles.smallPillText}>
-                  Around 30 minutes or less
-                </Text>
-              </View>
-            </View>
-            <Ionicons
-              name="arrow-forward"
-              size={19}
-              color={PALETTE.slateDark}
-            />
-          </Pressable>
         </View>
 
         <View style={styles.section}>
           <SectionHeading
-            eyebrow="A LITTLE MORE MAGIC"
+            eyebrow="YOUR PREMIUM KITCHEN"
             title="Made for your pantry"
           />
+          <Text style={styles.sectionDescription}>
+            Choose the ingredients you want to use and find recipes built around
+            them.
+          </Text>
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
               isPremium
-                ? "Open ingredient-based recipe creator"
-                : "Explore KitchenBuddy Premium"
+                ? "Open Ingredient Builder"
+                : "Explore Premium to unlock Ingredient Builder"
             }
+            accessibilityState={{ disabled: premiumLoading }}
+            disabled={premiumLoading}
             onPress={handleIngredientBuilder}
             style={({ pressed }) => [
               styles.premiumCard,
+              premiumLoading && styles.ideaCardUnavailable,
               pressed && styles.premiumPressed,
             ]}
           >
             <View style={styles.premiumTop}>
               <IconTile
-                icon={isPremium ? "sparkles-outline" : "lock-closed-outline"}
+                icon={isPremium ? "options-outline" : "lock-closed-outline"}
                 dark
               />
               <View style={styles.premiumBadge}>
@@ -345,18 +320,19 @@ const RecipesScreen: React.FC = () => {
                 <Text style={styles.premiumBadgeText}>PREMIUM</Text>
               </View>
             </View>
-            <Text style={styles.premiumTitle}>
-              Ingredient-based recipe creator
-            </Text>
+            <Text style={styles.premiumTitle}>Ingredient Builder</Text>
             <Text style={styles.premiumDescription}>
-              Choose ingredients from your pantry and discover tailored recipes
-              that make the most of what you have.
+              Pick up to five Pantry or custom ingredients, set your priorities,
+              and discover matching recipes with missing-item and nutrition
+              details.
             </Text>
             <View style={styles.premiumFooter}>
               <Text style={styles.premiumFooterText}>
-                {isPremium
-                  ? "Included in your Premium plan"
-                  : "Explore Premium to unlock"}
+                {premiumLoading
+                  ? "Checking Premium access…"
+                  : isPremium
+                    ? "Build with your ingredients"
+                    : "Explore Premium to unlock"}
               </Text>
               <Ionicons name="arrow-forward" size={18} color={PALETTE.paper} />
             </View>
