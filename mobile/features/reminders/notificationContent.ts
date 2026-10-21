@@ -14,7 +14,7 @@ export function expiryReminderCopy(
     };
   return {
     title: `Plan ahead: ${name}`,
-    body: `${name} expires in ${leadDays} days. There is still time to put it to good use.`,
+    body: `${name} expires in ${leadDays} days.`,
   };
 }
 
@@ -25,7 +25,7 @@ export const WATER_MESSAGES: readonly ReminderCopy[] = [
   },
   {
     title: "Time to refresh 💧",
-    body: "A gentle nudge from KitchenBuddy: have some water.",
+    body: "A gentle nudge: have some water.",
   },
   {
     title: "Your water reminder 💧",

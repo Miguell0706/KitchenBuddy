@@ -48,15 +48,17 @@ if (__DEV__) {
   };
 }
 
-useEffect(() => {
-  void startPantryPersistence().catch((error) => {
-    console.warn("Pantry initialization failed:", error);
-  });
-}, []);
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const hydrateSettings = useSettingsStore((s) => s.hydrate);
   const pantryHydrated = usePantryStore((s) => s.hydrated);
+
+  useEffect(() => {
+    void startPantryPersistence().catch((error) => {
+      console.warn("Pantry initialization failed:", error);
+    });
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
