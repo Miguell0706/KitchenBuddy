@@ -1,8 +1,6 @@
 /**
  * KitchenBuddy — Settings, Ivory / Slate editorial edition.
- * Replace the existing Settings tab screen with this file.
  * Retains existing reminder storage, scheduling functions and navigation routes.
- * No extra image assets or dependencies required.
  */
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -17,6 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { usePremium } from "@/context/PremiumContext";
 import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
@@ -39,7 +38,6 @@ import {
   expiryReminderCopy,
   waterReminderCopy,
 } from "@/features/reminders/notificationContent";
-
 const P = {
   ivory: "#F5F2EC",
   white: "#FFFEFA",
@@ -61,7 +59,6 @@ const SERIF = Platform.select({
 type AppIcon = keyof typeof Ionicons.glyphMap;
 type ExpiryLead = ReminderSettings["expiryLead"];
 type WaterCadence = ReminderSettings["waterCadence"];
-
 const INITIAL: ReminderSettings = { ...defaultReminderSettings };
 function minutesToDate(minutes: number): Date {
   const date = new Date();
@@ -76,7 +73,6 @@ function formatTime(minutes: number): string {
   const minute = minutes % 60;
   return `${((hour + 11) % 12) + 1}:${String(minute).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
 }
-
 function SectionHeader({
   icon,
   title,
@@ -98,7 +94,6 @@ function SectionHeader({
     </View>
   );
 }
-
 function SettingRow({
   icon,
   title,
@@ -149,7 +144,6 @@ function SettingRow({
     </View>
   );
 }
-
 function Choice({
   title,
   subtitle,
@@ -191,8 +185,14 @@ function Choice({
     </Pressable>
   );
 }
-
 export default function SettingsScreen() {
+  const {
+    isPremium,
+    isLoading: isPremiumLoading,
+    restorePremium,
+  } = usePremium();
+  const restoringRef = useRef(false);
+  const [restoring, setRestoring] = useState(false);
   const [settings, setSettings] = useState<ReminderSettings>(INITIAL);
   const settingsRef = useRef<ReminderSettings>(INITIAL);
   const [loaded, setLoaded] = useState(false);
@@ -205,7 +205,6 @@ export default function SettingsScreen() {
   const [notice, setNotice] = useState<{ title: string; body: string } | null>(
     null,
   );
-
   useEffect(() => {
     let active = true;
     (async () => {
@@ -230,7 +229,6 @@ export default function SettingsScreen() {
       active = false;
     };
   }, []);
-
   async function updateReminderSettings(changes: Partial<ReminderSettings>) {
     if (!loaded || updatingRef.current) return;
     updatingRef.current = true;
@@ -277,7 +275,6 @@ export default function SettingsScreen() {
       setUpdating(false);
     }
   }
-
   async function selectStartTime(date?: Date) {
     if (!date) return;
     const start = dateToMinutes(date);
@@ -365,8 +362,31 @@ export default function SettingsScreen() {
   const waterSubtitle = settings.waterReminders
     ? `${cadenceLabel} · ${formatTime(settings.waterStartMinutes)}–${formatTime(settings.waterEndMinutes)}`
     : "Optional reminders to drink water";
-  const disabled = !loaded || updating;
+  async function handleRestorePurchase() {
+    if (restoringRef.current || isPremiumLoading) return;
+    restoringRef.current = true;
+    setRestoring(true);
+    try {
+      const active = await restorePremium();
+      setNotice({
+        title: active ? "Purchase restored" : "No active subscription found",
+        body: active
+          ? "Your KitchenBuddy Premium membership has been restored."
+          : "We couldn't find an active Premium membership to restore.",
+      });
+    } catch (error) {
+      console.error("Restore purchase error:", error);
+      setNotice({
+        title: "Restore unsuccessful",
+        body: "We couldn't restore your purchases. Please try again.",
+      });
+    } finally {
+      restoringRef.current = false;
+      setRestoring(false);
+    }
+  }
 
+  const disabled = !loaded || updating;
   return (
     <View style={styles.root}>
       <ScrollView
@@ -382,7 +402,6 @@ export default function SettingsScreen() {
             A little care in the everyday.
           </Text>
         </View>
-
         <View style={styles.hero}>
           <View style={styles.heroCopy}>
             <View style={styles.heroOverline}>
@@ -412,7 +431,6 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
-
         <View style={styles.card}>
           <SectionHeader
             icon="notifications-outline"
@@ -724,7 +742,6 @@ export default function SettingsScreen() {
             </View>
           ) : null}
         </View>
-
         <View style={styles.card}>
           <SectionHeader
             icon="scan-outline"
@@ -744,7 +761,6 @@ export default function SettingsScreen() {
             onPress={() => router.push("/settings/scan-cache")}
           />
         </View>
-
         <View style={styles.card}>
           <SectionHeader
             icon="cube-outline"
@@ -764,7 +780,6 @@ export default function SettingsScreen() {
             onPress={() => router.push("/settings/pantry-history")}
           />
         </View>
-
         <View style={styles.card}>
           <SectionHeader
             icon="person-outline"
@@ -797,12 +812,18 @@ export default function SettingsScreen() {
             onPress={() => router.push("/settings/pantry-analytics")}
             right={
               <View style={styles.rightLabel}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={13}
-                  color={P.brown}
-                />
-                <Text style={styles.rightLabelText}>Premium</Text>
+                {!isPremiumLoading && !isPremium ? (
+                  <>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={13}
+                      color={P.brown}
+                    />
+                    <Text style={styles.rightLabelText}>Premium</Text>
+                  </>
+                ) : isPremium ? (
+                  <Text style={styles.rightLabelText}>Included</Text>
+                ) : null}
                 <Ionicons name="chevron-forward" size={16} color={P.muted} />
               </View>
             }
@@ -810,13 +831,13 @@ export default function SettingsScreen() {
           <SettingRow
             icon="refresh-outline"
             title="Restore purchase"
-            subtitle="Restore a previous subscription"
-            onPress={() =>
-              setNotice({
-                title: "Restore Purchase",
-                body: "Premium subscriptions are not available yet.",
-              })
+            subtitle={
+              restoring
+                ? "Checking previous purchases…"
+                : "Restore a previous subscription"
             }
+            disabled={restoring || isPremiumLoading}
+            onPress={() => void handleRestorePurchase()}
           />
           <SettingRow
             icon="help-circle-outline"
@@ -874,7 +895,6 @@ export default function SettingsScreen() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: P.ivory },
   content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 56 },
