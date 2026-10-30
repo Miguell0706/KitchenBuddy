@@ -3,12 +3,13 @@ import { Router } from "express";
 import { LRUCache } from "lru-cache";
 import { pool } from "../db.js";
 import {
+  isBusinessCachingEnabled,
   reservePublicRecipeRequest,
-  reserveBasicRecipeUpstreamCall,
+  reserveNinjasUpstreamCall,
+  retryAfterSeconds,
 } from "../lib/apiUsage.js";
 
 const router = Router();
-
 const API_NINJA_BASE = "https://api.api-ninjas.com/v3/recipe";
 
 type NinjaIngredient = {
@@ -31,12 +32,13 @@ type PublicRecipe = {
   instructions: string[];
 };
 
-const cache = new LRUCache<string, PublicRecipe[]>({
+// Code is kept for the Business-tier transition; disabled in Free mode.
+const memoryCache = new LRUCache<string, PublicRecipe[]>({
   max: 2000,
-  ttl: 1000 * 60 * 60 * 24,
+  ttl: 24 * 60 * 60 * 1000,
 });
 
-function normalizeKey(rawTitle: string) {
+function normalizeKey(rawTitle: string): string {
   return (
     "recipes:title:" +
     rawTitle.trim().toLowerCase().normalize("NFKC").replace(/\s+/g, " ")
@@ -85,103 +87,104 @@ function normalizeRecipe(recipe: NinjaRecipe): PublicRecipe | null {
   };
 }
 
-function retryAfterSeconds(resetAt: string) {
-  return Math.max(1, Math.ceil((Date.parse(resetAt) - Date.now()) / 1000));
-}
-
 router.get("/", async (req: Request, res: Response) => {
-  // Reject malformed queries BEFORE consuming request quota.
-  const titleValue = req.query.title;
-  if (typeof titleValue !== "string") {
+  // Validate before consuming per-client request allowance.
+  if (typeof req.query.title !== "string") {
     return res.status(400).json({ ok: false, error: "MISSING_TITLE" });
   }
-  const rawTitle = titleValue.trim();
-  if (rawTitle.length < 2 || rawTitle.length > 100) {
+  const title = req.query.title.trim();
+  if (title.length < 2 || title.length > 100) {
     return res.status(400).json({ ok: false, error: "INVALID_TITLE" });
   }
+
   try {
-    const requestQuota = await reservePublicRecipeRequest(req);
-    if (!requestQuota.allowed) {
+    const requestLimit = await reservePublicRecipeRequest(req);
+    if (!requestLimit.allowed) {
       res.setHeader(
         "Retry-After",
-        String(retryAfterSeconds(requestQuota.resetAt)),
+        String(retryAfterSeconds(requestLimit.resetAt)),
       );
       return res.status(429).json({
         ok: false,
-        error: requestQuota.reason,
-        resetAt: requestQuota.resetAt,
+        error: requestLimit.reason,
+        resetAt: requestLimit.resetAt,
       });
     }
 
-    const cacheKey = normalizeKey(rawTitle);
-    // Hot cache first: avoids PostgreSQL reads for repeated searches.
-    const mem = cache.get(cacheKey);
-    if (mem !== undefined) {
-      return res.json({
-        ok: true,
-        cached: true,
-        cachedFrom: "memory",
-        title: rawTitle,
-        cacheKey,
-        recipes: mem,
-      });
-    }
+    const cacheKey = normalizeKey(title);
+    const cachingEnabled = isBusinessCachingEnabled();
 
-    const dbHit = await pool.query<{ recipes_json: PublicRecipe[] }>(
-      `select recipes_json from recipe_query_cache
-       where query_title = $1 and expires_at > now() limit 1`,
-      [cacheKey],
-    );
-    if (dbHit.rowCount) {
-      const recipes = dbHit.rows[0].recipes_json;
-      cache.set(cacheKey, recipes);
-      return res.json({
-        ok: true,
-        cached: true,
-        cachedFrom: "postgres",
-        title: rawTitle,
-        cacheKey,
-        recipes,
-      });
+    if (cachingEnabled) {
+      const hot = memoryCache.get(cacheKey);
+      if (hot !== undefined) {
+        return res.json({
+          ok: true,
+          cached: true,
+          cachedFrom: "memory",
+          title,
+          cacheKey,
+          recipes: hot,
+        });
+      }
+
+      const dbHit = await pool.query<{ recipes_json: PublicRecipe[] }>(
+        `SELECT recipes_json FROM recipe_query_cache
+         WHERE query_title = $1 AND expires_at > now() LIMIT 1`,
+        [cacheKey],
+      );
+      if (dbHit.rowCount) {
+        const recipes = dbHit.rows[0].recipes_json;
+        memoryCache.set(cacheKey, recipes);
+        return res.json({
+          ok: true,
+          cached: true,
+          cachedFrom: "postgres",
+          title,
+          cacheKey,
+          recipes,
+        });
+      }
     }
 
     const apiKey = process.env.API_NINJA_KEY;
-    if (!apiKey)
+    if (!apiKey) {
       return res
         .status(503)
         .json({ ok: false, error: "RECIPE_PROVIDER_NOT_CONFIGURED" });
+    }
 
-    // A GLOBAL DB-backed cap that an attacker cannot bypass by rotating their IP.
-    const upstreamQuota = await reserveBasicRecipeUpstreamCall();
-    if (!upstreamQuota.allowed) {
+    // One GLOBAL shared budget for Free and future Premium routes.
+    // Cache hits never reach this point. Free plan enforces Free-tier caps.
+    const upstreamBudget = await reserveNinjasUpstreamCall();
+    if (!upstreamBudget.allowed) {
       res.setHeader(
         "Retry-After",
-        String(retryAfterSeconds(upstreamQuota.resetAt)),
+        String(retryAfterSeconds(upstreamBudget.resetAt)),
       );
       return res.status(503).json({
         ok: false,
-        error: "RECIPE_PROVIDER_BUDGET_REACHED",
-        resetAt: upstreamQuota.resetAt,
+        error: upstreamBudget.reason,
+        resetAt: upstreamBudget.resetAt,
       });
     }
 
     let upstream: globalThis.Response;
     try {
       upstream = await fetch(
-        `${API_NINJA_BASE}?title=${encodeURIComponent(rawTitle)}`,
+        `${API_NINJA_BASE}?title=${encodeURIComponent(title)}`,
         {
           headers: { "X-Api-Key": apiKey, Accept: "application/json" },
           signal: AbortSignal.timeout(9500),
         },
       );
     } catch (error) {
-      console.warn("Basic recipes upstream network failure:", error);
+      console.warn("Basic recipes upstream request failed:", error);
       return res
         .status(503)
         .json({ ok: false, error: "RECIPE_PROVIDER_UNAVAILABLE" });
     }
     if (!upstream.ok) {
-      console.warn("Basic recipes upstream HTTP status:", upstream.status);
+      console.warn("Basic recipes provider HTTP status:", upstream.status);
       return res.status(upstream.status === 429 ? 503 : 502).json({
         ok: false,
         error:
@@ -192,42 +195,46 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     const raw: unknown = await upstream.json();
-    if (!Array.isArray(raw))
+    if (!Array.isArray(raw)) {
       return res
         .status(502)
         .json({ ok: false, error: "INVALID_UPSTREAM_RESPONSE" });
+    }
     const normalized = raw
-      .map((value): PublicRecipe | null =>
-        normalizeRecipe(value as NinjaRecipe),
-      )
-      .filter((value): value is PublicRecipe => value !== null);
+      .map((item): PublicRecipe | null => normalizeRecipe(item as NinjaRecipe))
+      .filter((item): item is PublicRecipe => item !== null);
 
-    cache.set(cacheKey, normalized);
-    // Even if caching fails, return successfully retrieved recipes to the client.
-    try {
-      await pool.query(
-        `insert into recipe_query_cache (query_title, recipes_json, expires_at, updated_at)
-         values ($1, $2::jsonb, now() + interval '7 days', now())
-         on conflict (query_title)
-         do update set recipes_json = excluded.recipes_json,
-           expires_at = excluded.expires_at, updated_at = now()`,
-        [cacheKey, JSON.stringify(normalized)],
-      );
-    } catch (error) {
-      console.warn("Could not persist basic recipe cache:", error);
+    if (cachingEnabled) {
+      memoryCache.set(cacheKey, normalized);
+      try {
+        await pool.query(
+          `INSERT INTO recipe_query_cache (query_title, recipes_json, expires_at, updated_at)
+           VALUES ($1, $2::jsonb, now() + interval '7 days', now())
+           ON CONFLICT (query_title) DO UPDATE SET
+             recipes_json = excluded.recipes_json,
+             expires_at = excluded.expires_at,
+             updated_at = now()`,
+          [cacheKey, JSON.stringify(normalized)],
+        );
+      } catch (error) {
+        console.warn("Basic recipes cache write failed:", error);
+      }
+    } else {
+      // Do not instruct caches/proxies to store Free-plan API Ninjas output.
+      res.setHeader("Cache-Control", "no-store");
     }
 
     return res.json({
       ok: true,
       cached: false,
       cachedFrom: null,
-      title: rawTitle,
+      title,
       cacheKey,
       recipes: normalized,
     });
   } catch (error) {
-    console.error("Basic recipes route failed:", error);
-    // Fail closed: if the database-backed guard is unavailable, don't spend API credits.
+    console.error("Basic recipes endpoint failed:", error);
+    // Fail closed when guards cannot reserve the usage counters.
     return res
       .status(503)
       .json({ ok: false, error: "RECIPE_SERVICE_UNAVAILABLE" });
