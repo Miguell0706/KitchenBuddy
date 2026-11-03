@@ -16,6 +16,14 @@ const app = express();
 // app.set("trust proxy", 1);
 
 app.use(cors());
+app.use("/api/recipes", (req, _res, next) => {
+  console.log("[IP diagnostic]", {
+    expressIp: req.ip,
+    socketIp: req.socket.remoteAddress,
+    forwardedFor: req.headers["x-forwarded-for"],
+  });
+  next();
+});
 app.use(express.json({ limit: "200kb" }));
 
 // Readiness is deliberately separate from port binding. Render can detect the
