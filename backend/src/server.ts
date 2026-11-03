@@ -13,7 +13,7 @@ const app = express();
 
 // Configure trust proxy separately, after verifying your Render proxy setup.
 // An incorrect value can weaken IP-based rate limits.
-// app.set("trust proxy", 1);
+app.set("trust proxy", 1);
 
 app.use(cors());
 app.use("/api/recipes", (req, _res, next) => {
