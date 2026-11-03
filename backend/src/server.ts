@@ -21,6 +21,7 @@ app.use("/api/recipes", (req, _res, next) => {
     expressIp: req.ip,
     socketIp: req.socket.remoteAddress,
     forwardedFor: req.headers["x-forwarded-for"],
+    cfConnectingIp: req.headers["cf-connecting-ip"],
   });
   next();
 });
