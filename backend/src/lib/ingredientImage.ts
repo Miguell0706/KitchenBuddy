@@ -1,37 +1,82 @@
 import { pool } from "../db.js";
 import { pexelsSearchPhotos } from "../pexels.js";
 
-/** Finds the existing Pexels cache even if display-name casing/spacing differs. */
-export async function getOrCreateIngredientImage(canonicalName: string) {
-  const name = canonicalName.trim().replace(/\s+/g, " ");
-  if (!name) return null;
+/**
+ * Ingredient images are nonessential: failure to retrieve one must never
+ * prevent a receipt from being reviewed or saved.
+ */
+type IngredientImage = {
+  url: string;
+  avgColor: string;
+  credit: {
+    provider: "pexels";
+    providerUrl: string;
+    photoUrl: string;
+    photographer: string;
+    photographerUrl: string;
+  };
+};
 
-  // Preserve existing cache keys, but also find old entries with different casing
-  // or trailing spaces. Return the actual matched key to increment its hits.
-  const cached = await pool.query(
-    `select canonical_name, image_json
-       from ingredient_image_cache
-      where canonical_name = $1
-         or lower(btrim(canonical_name)) = lower($1)
-      order by case when canonical_name = $1 then 0 else 1 end
-      limit 1`,
-    [name],
-  );
+const inFlight = new Map<string, Promise<IngredientImage | null>>();
+const negativeCache = new Map<string, number>();
+const NEGATIVE_TTL_MS = 30 * 60 * 1000;
+const MAX_NEGATIVE_KEYS = 500;
+
+async function resolveImage(
+  name: string,
+  cacheKey: string,
+): Promise<IngredientImage | null> {
+  let cached;
+  try {
+    cached = await pool.query<{
+      canonical_name: string;
+      image_json: IngredientImage;
+    }>(
+      `SELECT canonical_name, image_json
+         FROM ingredient_image_cache
+        WHERE canonical_name = $1
+           OR lower(btrim(canonical_name)) = lower($1)
+        ORDER BY CASE WHEN canonical_name = $1 THEN 0 ELSE 1 END
+        LIMIT 1`,
+      [name],
+    );
+  } catch (error) {
+    // Fail closed for Pexels costs when cache database is unavailable.
+    console.warn("Ingredient image cache unavailable:", error);
+    return null;
+  }
 
   if (cached.rowCount) {
     pool
       .query(
-        `update ingredient_image_cache
-          set hits = hits + 1
-        where canonical_name = $1`,
+        `UPDATE ingredient_image_cache SET hits = hits + 1 WHERE canonical_name = $1`,
         [cached.rows[0].canonical_name],
       )
       .catch(() => {});
     return cached.rows[0].image_json;
   }
 
-  const photo = await pexelsSearchPhotos(name);
-  if (!photo) return null;
+  if ((negativeCache.get(cacheKey) ?? 0) > Date.now()) return null;
+  negativeCache.delete(cacheKey);
+
+  let photo;
+  try {
+    photo = await pexelsSearchPhotos(name);
+  } catch (error) {
+    console.warn("Ingredient image provider unavailable:", error);
+    return null;
+  }
+  if (!photo?.src?.medium) {
+    // Keeps repeated uncached searches for absent images inexpensive.
+    // Also briefly suppresses repeat attempts after provider rate limits;
+    // source-side quotas independently protect against excess traffic.
+    if (negativeCache.size >= MAX_NEGATIVE_KEYS) {
+      const oldestKey = negativeCache.keys().next().value;
+      if (oldestKey !== undefined) negativeCache.delete(oldestKey);
+    }
+    negativeCache.set(cacheKey, Date.now() + NEGATIVE_TTL_MS);
+    return null;
+  }
 
   const image = {
     url: photo.src.medium,
@@ -45,14 +90,34 @@ export async function getOrCreateIngredientImage(canonicalName: string) {
     },
   };
 
-  await pool.query(
-    `insert into ingredient_image_cache
-      (canonical_name, image_json, updated_at)
-     values ($1, $2::jsonb, now())
-     on conflict (canonical_name)
-     do update set image_json = excluded.image_json,
-                   updated_at = now()`,
-    [name, JSON.stringify(image)],
-  );
+  try {
+    await pool.query(
+      `INSERT INTO ingredient_image_cache (canonical_name, image_json, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (canonical_name)
+       DO UPDATE SET image_json = EXCLUDED.image_json, updated_at = now()`,
+      [name, JSON.stringify(image)],
+    );
+  } catch (error) {
+    console.warn("Ingredient image cache write failed:", error);
+    // A fetched valid image can still be used for this request.
+  }
   return image;
+}
+
+export async function getOrCreateIngredientImage(
+  canonicalName: string,
+): Promise<IngredientImage | null> {
+  const name = canonicalName.trim().replace(/\s+/g, " ");
+  if (!name || name.length > 120) return null;
+  const key = name.toLowerCase();
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const work = resolveImage(name, key);
+  inFlight.set(key, work);
+  try {
+    return await work;
+  } finally {
+    if (inFlight.get(key) === work) inFlight.delete(key);
+  }
 }

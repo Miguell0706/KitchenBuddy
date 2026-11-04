@@ -39,7 +39,9 @@ export type QuotaDecision =
         | "DAILY_LIMIT"
         | "PROVIDER_HOURLY_BUDGET"
         | "PROVIDER_DAILY_BUDGET"
-        | "PROVIDER_MONTHLY_BUDGET";
+        | "PROVIDER_MONTHLY_BUDGET"
+        | "GEMINI_GLOBAL_DAILY_BUDGET"
+        | "GEMINI_GLOBAL_MONTHLY_BUDGET";
 
       used: number;
 
@@ -459,4 +461,83 @@ export async function reserveNinjasUpstreamCall(): Promise<QuotaDecision> {
 
 export function retryAfterSeconds(resetAt: string): number {
   return Math.max(1, Math.ceil((Date.parse(resetAt) - Date.now()) / 1000));
+}
+
+/**
+ * Cheap protection for all canonicalization POSTs, including full cache hits.
+ * This is separate from the Gemini-only allowances below.
+ */
+export async function reserveCanonicalizeRequest(
+  req: Request,
+): Promise<QuotaDecision> {
+  const id = ipSubject(req);
+  const now = new Date();
+  return reserveAll([
+    {
+      scope: "canonicalize-requests-per-minute-v1",
+      subject: id,
+      window: utcWindow(now, "minute"),
+      limit: configuredLimit("CANONICALIZE_REQUESTS_PER_IP_PER_MINUTE", 20),
+      reason: "BURST_LIMIT",
+    },
+    {
+      scope: "canonicalize-requests-per-day-v1",
+      subject: id,
+      window: utcWindow(now, "day"),
+      limit: configuredLimit("CANONICALIZE_REQUESTS_PER_IP_PER_DAY", 200),
+      reason: "DAILY_LIMIT",
+    },
+  ]);
+}
+
+/**
+ * Reserve only when Gemini is about to receive a genuine network call.
+ * All four counters are committed atomically: a rejected call consumes none.
+ * Global month is UTC calendar-based; adjust if your Gemini billing cycle differs.
+ */
+export async function reserveGeminiUpstreamCall(
+  req: Request,
+): Promise<QuotaDecision> {
+  const id = ipSubject(req);
+  const now = new Date();
+  const monthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  );
+  const nextMonth = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+  );
+  const monthlyWindow = {
+    key: monthStart.toISOString().slice(0, 10),
+    resetAt: nextMonth.toISOString(),
+  };
+  return reserveAll([
+    {
+      scope: "gemini-per-ip-minute-v1",
+      subject: id,
+      window: utcWindow(now, "minute"),
+      limit: configuredLimit("GEMINI_PER_IP_PER_MINUTE", 5),
+      reason: "BURST_LIMIT",
+    },
+    {
+      scope: "gemini-per-ip-day-v1",
+      subject: id,
+      window: utcWindow(now, "day"),
+      limit: configuredLimit("GEMINI_PER_IP_PER_DAY", 30),
+      reason: "DAILY_LIMIT",
+    },
+    {
+      scope: "gemini-global-day-v1",
+      subject: "all",
+      window: utcWindow(now, "day"),
+      limit: configuredLimit("GEMINI_GLOBAL_DAILY_MAX", 500),
+      reason: "GEMINI_GLOBAL_DAILY_BUDGET",
+    },
+    {
+      scope: "gemini-global-month-v1",
+      subject: "all",
+      window: monthlyWindow,
+      limit: configuredLimit("GEMINI_GLOBAL_MONTHLY_MAX", 10000),
+      reason: "GEMINI_GLOBAL_MONTHLY_BUDGET",
+    },
+  ]);
 }
