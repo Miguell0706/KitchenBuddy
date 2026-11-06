@@ -8,6 +8,7 @@ import { initCanonCache } from "./db/initCanonCache.js";
 import { initApiUsage } from "./db/initApiUsage.js";
 import imagesRouter from "./routes/images.js";
 import supportRouter from "./routes/support.js";
+import { initAiImageAssets } from "./db/initAiImageAssets.js";
 import { aiImageSmokeTestRouter } from "./routes/aiImageSmokeTest.js";
 const app = express();
 
@@ -68,7 +69,7 @@ async function initializeDatabase() {
     initStage = "API usage counters schema";
     await initApiUsage();
     console.log("✅ API usage counters ready");
-
+    await initAiImageAssets();
     dbReady = true;
     initStage = "complete";
     console.log("✅ Backend ready to accept API requests");
