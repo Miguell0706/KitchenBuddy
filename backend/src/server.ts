@@ -8,7 +8,7 @@ import { initCanonCache } from "./db/initCanonCache.js";
 import { initApiUsage } from "./db/initApiUsage.js";
 import imagesRouter from "./routes/images.js";
 import supportRouter from "./routes/support.js";
-
+import { aiImageSmokeTestRouter } from "./routes/aiImageSmokeTest.js";
 const app = express();
 
 // Configure trust proxy separately, after verifying your Render proxy setup.
@@ -17,7 +17,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: "200kb" }));
-
+app.use("/api/internal/ai-image-smoke-test", aiImageSmokeTestRouter);
 // Readiness is deliberately separate from port binding. Render can detect the
 // HTTP port immediately, while /health stays 503 until DB initialization works.
 let dbReady = false;
