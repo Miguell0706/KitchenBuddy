@@ -80,7 +80,7 @@ function normalizedName(
     .trim();
   if (!display || display.length > 120) return null;
   // Search terms, not arbitrary free-form instructions or HTML markup.
-  if (!/^[\p{L}\p{N}][\p{L}\p{N}\s'’&+,.()\-/]*$/u.test(display)) return null;
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}\s'’&+,.():\-/]*$/u.test(display)) return null;
   return { display, lookup: display.toLocaleLowerCase("en-US") };
 }
 
@@ -439,7 +439,15 @@ export async function getAiOnlyImage(
   rawName: string,
   req?: Request,
 ): Promise<AiLookupResult> {
-  const name = normalizedName(rawName);
+  const cleanedName =
+    kind === "recipe"
+      ? rawName.replace(
+          /^\s*(?:mon|tue|wed|thu|fri|sat|sun)(?:day)?\s*[-–]\s*(?:breakfast|lunch|dinner|snack)\s*:\s*/i,
+          "",
+        )
+      : rawName;
+
+  const name = normalizedName(cleanedName);
   if (!name) return { image: null, status: "invalid" };
   if (process.env.AI_IMAGES_ENABLED !== "true")
     return { image: null, status: "disabled" };
