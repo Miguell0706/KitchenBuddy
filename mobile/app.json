@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "PantryFriend",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -23,7 +23,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile"
+      "package": "com.pantryfriend.app"
     },
     "web": {
       "output": "static",

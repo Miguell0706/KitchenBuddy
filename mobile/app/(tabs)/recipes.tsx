@@ -7,7 +7,7 @@ import { useRecipesStore } from "@/features/recipes/store";
 import { usePantryStore } from "@/features/pantry/store";
 import { usePremium } from "@/context/PremiumContext";
 import type { PantryItem } from "@/features/pantry/types";
-
+import PantryRecipeMatches from "@/features/recipes/PantryRecipeMatches";
 const PALETTE = {
   background: "#F6F3EE",
   paper: "#FFFEFB",
@@ -158,7 +158,7 @@ const RecipesScreen: React.FC = () => {
             </View>
           </View>
         </View>
-
+        <PantryRecipeMatches />
         <View style={styles.section}>
           <SectionHeading eyebrow="YOUR COLLECTION" title="Your recipes" />
           <Text style={styles.sectionDescription}>
