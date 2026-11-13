@@ -12,6 +12,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { loadPantry } from "@/features/pantry/storage";
+import { isPlainCookingWater } from "@/features/recipes/pantryIngredientMatch";
 import { Colors, Spacing } from "@/constants/theme";
 
 import {
@@ -73,7 +74,7 @@ export default function AddRecipeToGroceryButton({
         if (typeof ingredient !== "string") continue;
         const label = ingredient.trim();
         const key = ingredientKey(label);
-        if (!key || seen.has(key)) continue;
+        if (!key || isPlainCookingWater(key) || seen.has(key)) continue;
         seen.add(key);
 
         const present = pantryKeys.some((pantryKey) =>

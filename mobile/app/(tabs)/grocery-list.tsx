@@ -9,7 +9,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -57,6 +59,8 @@ const P = {
   charcoal: "#2E2E2E",
   muted: "#79736F",
   pale: "#F3E5D0",
+  danger: "#8C4943",
+  dangerSoft: "#F5E9E5",
 };
 const SERIF = Platform.select({
   ios: "Georgia",
@@ -78,6 +82,12 @@ const CONCURRENT_LOOKUPS = 3;
 
 type CacheEntry = { image: IngredientImage | null; expiresAt: number };
 type Suggestion = { name: string; reason: string; priority: number };
+type RemovalConfirmation = {
+  title: string;
+  message: string;
+  buttonLabel: string;
+  update: (items: GroceryItem[]) => GroceryItem[];
+};
 function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -156,6 +166,7 @@ export default function GroceryListScreen() {
   const [pantryItems, setPantryItems] = useState<PantryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [removal, setRemoval] = useState<RemovalConfirmation | null>(null);
   const savingRef = useRef(false);
   const [overrides, setOverrides] = useState<
     Record<string, IngredientImageOverride>
@@ -391,44 +402,45 @@ export default function GroceryListScreen() {
         item.id === id ? { ...item, checked: !item.checked } : item,
       ),
     );
-  const remove = (id: string) =>
-    void updateItems((before) => before.filter((item) => item.id !== id));
+  const askToRemove = (confirmation: RemovalConfirmation) => {
+    if (loading || savingRef.current) return;
+    Keyboard.dismiss();
+    setRemoval(confirmation);
+  };
+
+  const remove = (id: string, label: string) =>
+    askToRemove({
+      title: "Remove grocery item?",
+      message: `Remove “${label}” from your grocery list?`,
+      buttonLabel: "Remove",
+      update: (before) => before.filter((item) => item.id !== id),
+    });
   const checkedCount = items.filter((item) => item.checked).length;
   const clearAll = () => {
-    if (loading || saving || !items.length) return;
-    Alert.alert(
-      "Clear entire grocery list?",
-      "Delete every item? This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear all",
-          style: "destructive",
-          onPress: () => {
-            void updateItems(() => []);
-          },
-        },
-      ],
-    );
+    if (!items.length) return;
+    askToRemove({
+      title: "Clear entire grocery list?",
+      message: `This will remove all ${items.length} ${items.length === 1 ? "item" : "items"} from your grocery list.`,
+      buttonLabel: "Clear all",
+      update: () => [],
+    });
   };
   const clearChecked = () => {
-    if (loading || saving || !checkedCount) return;
-    Alert.alert(
-      "Clear checked items?",
-      `Delete ${checkedCount} checked item${checkedCount === 1 ? "" : "s"}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear checked",
-          style: "destructive",
-          onPress: () => {
-            void updateItems((before) =>
-              before.filter((item) => !item.checked),
-            );
-          },
-        },
-      ],
-    );
+    if (!checkedCount) return;
+    askToRemove({
+      title: "Clear checked items?",
+      message: `This will remove ${checkedCount} checked ${checkedCount === 1 ? "item" : "items"}. Unchecked items will stay on your list.`,
+      buttonLabel: "Clear checked",
+      update: (before) => before.filter((item) => !item.checked),
+    });
+  };
+
+  const dismissRemoval = () => setRemoval(null);
+  const confirmRemoval = () => {
+    if (!removal || loading || savingRef.current) return;
+    const { update } = removal;
+    dismissRemoval();
+    void updateItems(update);
   };
 
   const showCredit = (image: IngredientImage | null | undefined) => {
@@ -848,7 +860,7 @@ export default function GroceryListScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${label}`}
-                    onPress={() => remove(item.id)}
+                    onPress={() => remove(item.id, label)}
                     disabled={saving}
                     style={styles.deleteButton}
                     hitSlop={6}
@@ -877,12 +889,119 @@ export default function GroceryListScreen() {
           </Pressable>
         </View>
       </ScrollView>
+      {removal && (
+        <Modal
+          transparent
+          animationType="fade"
+          onRequestClose={dismissRemoval}
+          supportedOrientations={["portrait", "landscape"]}
+        >
+          <View style={styles.confirmOverlay}>
+            <Pressable
+              accessible={false}
+              importantForAccessibility="no"
+              onPress={dismissRemoval}
+              style={StyleSheet.absoluteFill}
+            />
+            <View accessibilityViewIsModal style={styles.confirmCard}>
+              <ScrollView bounces={false}>
+                <View style={styles.confirmIcon}>
+                  <Ionicons name="trash-outline" size={22} color={P.danger} />
+                </View>
+                <Text accessibilityRole="header" style={styles.confirmTitle}>
+                  {removal.title}
+                </Text>
+                <Text style={styles.confirmMessage}>{removal.message}</Text>
+              </ScrollView>
+              <View style={styles.confirmActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={dismissRemoval}
+                  style={({ pressed }) => [
+                    styles.confirmButton,
+                    styles.cancelButton,
+                    pressed && styles.confirmPressed,
+                  ]}
+                >
+                  <Text style={styles.cancelLabel}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={confirmRemoval}
+                  style={({ pressed }) => [
+                    styles.confirmButton,
+                    styles.removeConfirmButton,
+                    pressed && styles.confirmPressed,
+                  ]}
+                >
+                  <Text style={styles.removeConfirmLabel}>
+                    {removal.buttonLabel}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: P.ivory },
+  confirmOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: "rgba(46, 46, 46, 0.46)",
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 390,
+    maxHeight: "90%",
+    padding: 22,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: P.fog,
+    backgroundColor: P.card,
+  },
+  confirmIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    backgroundColor: P.dangerSoft,
+  },
+  confirmTitle: {
+    color: P.charcoal,
+    fontFamily: SERIF,
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  confirmMessage: {
+    color: P.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  confirmActions: { flexDirection: "row", gap: 10, marginTop: 20 },
+  confirmButton: {
+    flex: 1,
+    minHeight: 48,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  cancelButton: { backgroundColor: P.row },
+  removeConfirmButton: { backgroundColor: P.danger },
+  confirmPressed: { opacity: 0.8 },
+  cancelLabel: { color: P.charcoal, fontWeight: "700", textAlign: "center" },
+  removeConfirmLabel: { color: P.card, fontWeight: "700", textAlign: "center" },
   content: { paddingHorizontal: 16, paddingTop: 19, paddingBottom: 45 },
   header: {
     flexDirection: "row",

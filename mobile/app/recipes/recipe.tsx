@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRecipesStore } from "@/features/recipes/store";
 import AddRecipeToGroceryButton from "@/features/grocery/AddRecipeToGroceryButton";
+import { ingredientKey } from "@/features/grocery/groceryIngredients";
+import { usePantryStore } from "@/features/pantry/store";
+import {
+  getPantryIngredientKeys,
+  isPlainCookingWater,
+} from "@/features/recipes/pantryIngredientMatch";
 import Toast from "react-native-toast-message";
 
 type StructuredIngredient = {
@@ -42,6 +48,10 @@ const P = {
   line: "#E9E5DE",
   soft: "#F2EEE8",
   white: "#FFFFFF",
+  inPantry: "#31573A",
+  inPantryBackground: "#E6EFE7",
+  needed: "#80501F",
+  neededBackground: "#FAECD9",
 };
 
 function isStructuredIngredient(value: unknown): value is StructuredIngredient {
@@ -110,6 +120,14 @@ function SectionHeading({
 export default function RecipeScreen() {
   const recipe = useRecipesStore((s) => s.selectedRecipe);
   const saveRecipe = useRecipesStore((s) => s.saveRecipe);
+  const pantry = usePantryStore((s) => s.pantry);
+  const pantryHydrated = usePantryStore((s) => s.hydrated);
+  const pantryHydrationError = usePantryStore((s) => s.hydrationError);
+  const pantryKeys = useMemo(
+    () => getPantryIngredientKeys(Object.values(pantry).flat()),
+    [pantry],
+  );
+  const pantryReady = pantryHydrated && !pantryHydrationError;
 
   if (!recipe) {
     return (
@@ -128,11 +146,16 @@ export default function RecipeScreen() {
 
   // Supports both existing string[] and structured API ingredients.
   const rawIngredients: unknown = recipe.ingredients;
-  const ingredients: string[] = Array.isArray(rawIngredients)
-    ? rawIngredients
-        .map(formatIngredient)
-        .filter((item): item is string => item !== null)
+  const ingredients = Array.isArray(rawIngredients)
+    ? rawIngredients.flatMap((item: unknown) => {
+        const label = formatIngredient(item);
+        if (!label) return [];
+        const name = isStructuredIngredient(item) ? item.name : label;
+        const pantryKey = ingredientKey(name);
+        return [{ label, pantryKey, onHand: isPlainCookingWater(pantryKey) }];
+      })
     : [];
+  const shoppingIngredients = ingredients.filter(({ onHand }) => !onHand);
 
   const instructions = Array.isArray(recipe.instructions)
     ? recipe.instructions
@@ -233,26 +256,61 @@ export default function RecipeScreen() {
               No ingredient list available.
             </Text>
           ) : (
-            ingredients.map((ingredient, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.ingredientRow,
-                  index === ingredients.length - 1 && styles.lastRow,
-                ]}
-              >
-                <View style={styles.ingredientBullet}>
-                  <Ionicons name="checkmark" size={13} color={P.slateDeep} />
+            ingredients.map(({ label, pantryKey, onHand }, index) => {
+              const showStatus =
+                onHand || (pantryReady && pantryKey.length > 0);
+              const inPantry = pantryKeys.has(pantryKey);
+              const available = onHand || inPantry;
+              const status = onHand
+                ? "On hand"
+                : inPantry
+                  ? "In pantry"
+                  : "Still needed";
+
+              return (
+                <View
+                  key={index}
+                  accessible
+                  accessibilityLabel={
+                    showStatus ? `${label}. ${status}.` : label
+                  }
+                  style={[
+                    styles.ingredientRow,
+                    index === ingredients.length - 1 && styles.lastRow,
+                  ]}
+                >
+                  <Text style={styles.ingredientText}>{label}</Text>
+                  {showStatus && (
+                    <View
+                      style={[
+                        styles.ingredientStatus,
+                        available ? styles.inPantryStatus : styles.neededStatus,
+                      ]}
+                    >
+                      <Ionicons
+                        name={available ? "checkmark" : "add"}
+                        size={13}
+                        color={available ? P.inPantry : P.needed}
+                      />
+                      <Text
+                        style={[
+                          styles.ingredientStatusText,
+                          { color: available ? P.inPantry : P.needed },
+                        ]}
+                      >
+                        {status}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.ingredientText}>{ingredient}</Text>
-              </View>
-            ))
+              );
+            })
           )}
-          {ingredients.length > 0 && (
+          {shoppingIngredients.length > 0 && (
             <View style={styles.groceryAction}>
               <Text style={styles.groceryEyebrow}>MAKE SHOPPING EASIER</Text>
               <AddRecipeToGroceryButton
-                ingredients={ingredients}
+                ingredients={shoppingIngredients.map(({ label }) => label)}
                 recipeTitle={recipe.title}
               />
             </View>
@@ -438,21 +496,24 @@ const styles = StyleSheet.create({
   },
   ingredientRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingVertical: 13,
     borderBottomWidth: 1,
     borderBottomColor: P.line,
     gap: 12,
   },
-  ingredientBullet: {
-    width: 23,
-    height: 23,
-    borderRadius: 8,
-    backgroundColor: P.soft,
+  ingredientStatus: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
+    gap: 4,
+    maxWidth: "45%",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
+  inPantryStatus: { backgroundColor: P.inPantryBackground },
+  neededStatus: { backgroundColor: P.neededBackground },
+  ingredientStatusText: { flexShrink: 1, fontSize: 11, fontWeight: "700" },
   ingredientText: { color: P.ink, fontSize: 14, lineHeight: 23, flex: 1 },
   lastRow: { borderBottomWidth: 0 },
   groceryAction: {

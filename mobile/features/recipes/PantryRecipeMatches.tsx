@@ -10,10 +10,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
-import { ingredientKey } from "@/features/grocery/groceryIngredients";
 import { usePantryStore } from "@/features/pantry/store";
 import type { PantryItem } from "@/features/pantry/types";
 import { useRecipesStore, type Recipe } from "@/features/recipes/store";
+import {
+  countPantryIngredients,
+  getPantryIngredientKeys,
+} from "@/features/recipes/pantryIngredientMatch";
 
 const C = {
   ink: "#292D2C",
@@ -35,37 +38,13 @@ type RankedRecipe = {
   coverage: number;
 };
 
-function localDateKey(): string {
-  const d = new Date();
-  return [
-    d.getFullYear(),
-    String(d.getMonth() + 1).padStart(2, "0"),
-    String(d.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function isUsableFood(item: PantryItem, today: string): boolean {
-  if (item.kind === "other" || item.categoryKey === "pet") return false;
-  if (item.quantity.trim() === "0") return false;
-  if (item.expiryDate && item.expiryDate.slice(0, 10) < today) return false;
-  return true;
-}
-
 /** Compare known recipes without making any additional recipe API requests. */
 function rankRecipes(
   pantry: PantryItem[],
   saved: Recipe[],
   recent: Recipe[],
 ): RankedRecipe[] {
-  const today = localDateKey();
-  const pantryKeys = new Set<string>();
-  for (const item of pantry) {
-    if (!isUsableFood(item, today)) continue;
-    for (const name of [item.recipeSearchName, item.name]) {
-      const key = ingredientKey(name ?? "");
-      if (key) pantryKeys.add(key);
-    }
-  }
+  const pantryKeys = getPantryIngredientKeys(pantry);
 
   // Keep just one copy of each title, preferring one with an existing photo.
   const known = new Map<string, Recipe>();
@@ -80,23 +59,18 @@ function rankRecipes(
 
   const matches: RankedRecipe[] = [];
   for (const recipe of known.values()) {
-    const ingredients = new Set(
-      recipe.ingredients
-        .filter((value): value is string => typeof value === "string")
-        .map(ingredientKey)
-        .filter(Boolean),
+    const { matched, total } = countPantryIngredients(
+      recipe.ingredients,
+      pantryKeys,
     );
-    if (ingredients.size === 0) continue;
-
-    const matched = [...ingredients].filter((key) => pantryKeys.has(key)).length;
     if (matched === 0) continue;
 
     matches.push({
       recipe,
       matched,
-      total: ingredients.size,
-      missing: ingredients.size - matched,
-      coverage: matched / ingredients.size,
+      total,
+      missing: total - matched,
+      coverage: matched / total,
     });
   }
 
@@ -184,11 +158,17 @@ export default function PantryRecipeMatches() {
                 </Text>
                 <View style={styles.progressTrack}>
                   <View
-                    style={[styles.progressFill, { width: `${coverage * 100}%` }]}
+                    style={[
+                      styles.progressFill,
+                      { width: `${coverage * 100}%` },
+                    ]}
                   />
                 </View>
                 <Text
-                  style={[styles.missingText, missing === 0 && styles.readyText]}
+                  style={[
+                    styles.missingText,
+                    missing === 0 && styles.readyText,
+                  ]}
                 >
                   {missing === 0
                     ? "All ingredients on hand"
@@ -280,7 +260,11 @@ const styles = StyleSheet.create({
     marginTop: 9,
     overflow: "hidden",
   },
-  progressFill: { height: "100%", backgroundColor: C.slateDark, borderRadius: 10 },
+  progressFill: {
+    height: "100%",
+    backgroundColor: C.slateDark,
+    borderRadius: 10,
+  },
   missingText: { color: C.muted, fontSize: 11, marginTop: 7 },
   readyText: { color: C.readyText, fontWeight: "700" },
   emptyCard: {
@@ -295,5 +279,10 @@ const styles = StyleSheet.create({
   },
   emptyTextWrap: { flex: 1 },
   emptyTitle: { color: C.ink, fontSize: 14, fontWeight: "700" },
-  emptyDescription: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  emptyDescription: {
+    color: C.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
 });

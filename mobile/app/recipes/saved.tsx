@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Image,
   Pressable,
@@ -9,6 +9,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { usePantryStore } from "@/features/pantry/store";
+import {
+  countPantryIngredients,
+  getPantryIngredientKeys,
+} from "@/features/recipes/pantryIngredientMatch";
 import { useRecipesStore } from "@/features/recipes/store";
 
 const P = {
@@ -31,6 +36,12 @@ const SavedRecipesScreen: React.FC = () => {
   const saved = useRecipesStore((s) => s.saved);
   const selectRecipe = useRecipesStore((s) => s.selectRecipe);
   const unsaveRecipe = useRecipesStore((s) => s.unsaveRecipe);
+  const pantry = usePantryStore((s) => s.pantry);
+  const pantryHydrated = usePantryStore((s) => s.hydrated);
+  const pantryKeys = useMemo(
+    () => getPantryIngredientKeys(Object.values(pantry).flat()),
+    [pantry],
+  );
 
   function openRecipe(title: string) {
     selectRecipe(title);
@@ -101,11 +112,21 @@ const SavedRecipesScreen: React.FC = () => {
             {saved.map((item) => {
               const imgUrl = item.image?.url;
               const avgColor = item.image?.avgColor ?? P.taupe;
+              const { matched, total } = countPantryIngredients(
+                item.ingredients,
+                pantryKeys,
+              );
+              const showPantryMatch = pantryHydrated && total > 0;
+              const recipeLabel = `View recipe ${item.title}`;
               return (
                 <View key={item.title} style={styles.recipeCard}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`View recipe ${item.title}`}
+                    accessibilityLabel={
+                      showPantryMatch
+                        ? `${recipeLabel}. ${matched} of ${total} ingredients in your pantry.`
+                        : recipeLabel
+                    }
                     onPress={() => openRecipe(item.title)}
                     style={({ pressed }) => [
                       styles.recipeMain,
@@ -128,6 +149,13 @@ const SavedRecipesScreen: React.FC = () => {
                             size={27}
                             color={P.slate}
                           />
+                        </View>
+                      )}
+                      {showPantryMatch && (
+                        <View style={styles.pantryBadge}>
+                          <Text style={styles.pantryBadgeText}>
+                            {matched} of {total} in pantry
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -297,6 +325,17 @@ const styles = StyleSheet.create({
   recipeMain: { flexDirection: "row", minHeight: 128 },
   thumbWrap: { width: 112, minHeight: 128 },
   thumbImage: { width: "100%", height: "100%" },
+  pantryBadge: {
+    position: "absolute",
+    top: 7,
+    left: 7,
+    maxWidth: 98,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    backgroundColor: P.slateDeep,
+  },
+  pantryBadgeText: { color: P.heroText, fontSize: 10, fontWeight: "700" },
   thumbPlaceholder: {
     flex: 1,
     justifyContent: "center",
